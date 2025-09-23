@@ -1,0 +1,9 @@
+.large_data_venv
+dataset_english/
+dataset_japan/
+test_code/
+results/
+.env
+
+prev_main_code.py
+agent_pet_food_query_system.py
