@@ -9,4 +9,9 @@ prev_main_code.py
 agent_pet_food_query_system.py
 
 *.log
-main_pet_food_query_system.py
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+__pycache__/*.pyc
