@@ -1,5 +1,18 @@
 #!/usr/bin/env python3
-"""Pet Food Query System"""
+"""
+Pet Food Query System with Full-Text Search (FTS) Enhancement
+
+This system now includes Full-Text Search capabilities on 6 key columns:
+- fts_product_name (maps to product_name)
+- fts_variation_name (maps to variation_name)  
+- fts_variation_name_final (maps to variation_name_final)
+- fts_target_animal_species (maps to target_animal_species)
+- fts_ingredients (maps to ingredients)
+- fts_type_of_meat (maps to type_of_meat)
+
+FTS provides better text matching and relevance ranking using PostgreSQL's
+plainto_tsquery() function combined with traditional ILIKE for comprehensive coverage.
+"""
 
 import os
 import pandas as pd
@@ -52,9 +65,9 @@ class PetFoodQuerySystem:
         self.results_folder = Path("results")
         self.results_folder.mkdir(exist_ok=True)
         
-        # Database schema
+        # Database schema with Full-Text Search (FTS) columns
         self.schema = {
-            "table_name": "pet_food",
+            "table_name": "pet_food_sql_fts",
             "columns": [
                 "id", "brand_name_display", "brand_name_english", "brand_name_kana",
                 "empty_col", "product_name", "product_name_english", "product_name_kana",
@@ -67,8 +80,20 @@ class PetFoodQuerySystem:
                 "grain_classification", "type_of_fish", "additives_preservatives",
                 "metabolizable_energy", "protein_label", "fat_label", "fiber_label",
                 "ash_label", "moisture_label", "metabolizable_energy_100g",
-                "protein_percent", "fat_percent", "carbohydrates_percent"
-            ]
+                "protein_percent", "fat_percent", "carbohydrates_percent",
+                # Full-Text Search columns
+                "fts_product_name", "fts_variation_name", "fts_variation_name_final", 
+                "fts_target_animal_species", "fts_ingredients", "fts_type_of_meat"
+            ],
+            # FTS column mapping for reference
+            "fts_columns": {
+                "fts_product_name": "product_name",
+                "fts_variation_name": "variation_name", 
+                "fts_variation_name_final": "variation_name_final",
+                "fts_target_animal_species": "target_animal_species",
+                "fts_ingredients": "ingredients",
+                "fts_type_of_meat": "type_of_meat"
+            }
         }
         
         # Common query patterns and examples
@@ -132,159 +157,9 @@ class PetFoodQuerySystem:
         return True, "Query is valid"
     
     
-    def _get_searchable_text_columns(self) -> List[str]:
-        """
-        Get list of columns that are good candidates for full-text search
-        
-        Returns:
-            List of column names suitable for full-text search
-        """
-        return [
-            'brand_name_english', 'brand_name_display', 'product_name_english', 
-            'product_name', 'variation_name_final', 'ingredients', 
-            'specific_physical_condition', 'therapeutic_food_category',
-            'target_animal_species', 'food_genre', 'food_type', 'life_stage',
-            'type_of_meat', 'type_of_fish', 'grain_classification', 'legume_classification'
-        ]
-    
-    def _build_fulltext_search_condition(self, search_terms: List[str], columns: List[str] = None) -> str:
-        """
-        Build PostgreSQL full-text search condition with ranking
-        
-        Args:
-            search_terms: List of terms to search for
-            columns: Specific columns to search (if None, uses all searchable columns)
-            
-        Returns:
-            SQL condition string with full-text search and ranking
-        """
-        if not search_terms:
-            return ""
-        
-        if columns is None:
-            columns = self._get_searchable_text_columns()
-        
-        # Filter to only existing columns
-        available_columns = [col for col in columns if col in self.schema['columns']]
-        
-        if not available_columns:
-            return ""
-        
-        # Create combined tsvector from multiple columns
-        tsvector_parts = []
-        for col in available_columns:
-            tsvector_parts.append(f"to_tsvector('english', COALESCE({col}, ''))")
-        
-        combined_tsvector = " || ' ' || ".join(tsvector_parts)
-        
-        # Build the condition with ranking
-        fts_condition = f"""
-        (
-            ({combined_tsvector}) @@ plainto_tsquery('english', '{" ".join(search_terms)}')
-        )"""
-        
-        return fts_condition.strip()
-    
-    def _build_ilike_fallback_condition(self, search_terms: List[str], columns: List[str] = None) -> str:
-        """
-        Build ILIKE fallback condition for terms that might not work well with full-text search
-        
-        Args:
-            search_terms: List of terms to search for
-            columns: Specific columns to search
-            
-        Returns:
-            SQL condition string with ILIKE searches
-        """
-        if not search_terms:
-            return ""
-        
-        if columns is None:
-            columns = self._get_searchable_text_columns()
-        
-        # Filter to only existing columns
-        available_columns = [col for col in columns if col in self.schema['columns']]
-        
-        if not available_columns:
-            return ""
-        
-        ilike_conditions = []
-        for term in search_terms:
-            term_conditions = []
-            for col in available_columns:
-                term_conditions.append(f"{col} ILIKE '%{term}%'")
-            if term_conditions:
-                ilike_conditions.append(f"({' OR '.join(term_conditions)})")
-        
-        return " AND ".join(ilike_conditions) if ilike_conditions else ""
-    
-    def _sanitize_search_text(self, text: str) -> str:
-        """
-        Sanitize text for use in PostgreSQL full-text search queries
-        
-        Args:
-            text: Raw search text
-            
-        Returns:
-            Sanitized text safe for use in tsquery
-        """
-        if not text:
-            return ""
-        
-        # Remove or escape special characters that could break tsquery
-        # Keep alphanumeric, spaces, and common punctuation
-        import re
-        
-        # Replace single quotes with double single quotes for SQL escaping
-        sanitized = text.replace("'", "''")
-        
-        # Remove special PostgreSQL full-text search operators that could cause issues
-        # Keep only safe characters: letters, numbers, spaces, basic punctuation
-        sanitized = re.sub(r'[&|!()<>@]', ' ', sanitized)
-        
-        # Collapse multiple spaces
-        sanitized = re.sub(r'\s+', ' ', sanitized).strip()
-        
-        return sanitized
-    
-    def _build_comprehensive_fts_query(self, search_terms: List[str], target_columns: List[str] = None) -> Tuple[str, str]:
-        """
-        Build comprehensive full-text search query with ranking
-        
-        Args:
-            search_terms: List of search terms
-            target_columns: Specific columns to search (if None, uses all searchable columns)
-            
-        Returns:
-            Tuple of (tsvector_expression, tsquery_expression)
-        """
-        if not search_terms:
-            return "", ""
-        
-        if target_columns is None:
-            target_columns = self._get_searchable_text_columns()
-        
-        # Filter to existing columns
-        available_columns = [col for col in target_columns if col in self.schema['columns']]
-        
-        if not available_columns:
-            return "", ""
-        
-        # Build tsvector from multiple columns
-        tsvector_parts = [f"COALESCE({col}, '')" for col in available_columns]
-        tsvector_expr = f"to_tsvector('english', {' || \' \' || '.join(tsvector_parts)})"
-        
-        # Sanitize and combine search terms
-        sanitized_terms = [self._sanitize_search_text(term) for term in search_terms if term.strip()]
-        search_text = ' '.join(sanitized_terms)
-        
-        tsquery_expr = f"plainto_tsquery('english', '{search_text}')"
-        
-        return tsvector_expr, tsquery_expr
-
     def generate_sql_query(self, user_query: str) -> str:
         """
-        Generate SQL query from natural language using Gemini with enhanced full-text search support
+        Generate SQL query from natural language using Gemini
         
         Args:
             user_query: Natural language query from user
@@ -310,126 +185,103 @@ class PetFoodQuerySystem:
         - brand_name_english: English brand name - TEXT
         - product_name_english: English product name - TEXT
         
-        ENHANCED SEARCH CAPABILITIES:
-        - PostgreSQL Full-Text Search: Use to_tsvector() and plainto_tsquery() for natural language text search
-        - Text Ranking: Use ts_rank() to rank results by relevance
-        - ILIKE Fallback: Use ILIKE for exact phrase matching and simple patterns
-        - Combined Approach: Use both full-text search AND ILIKE for comprehensive coverage
-        
-        FULL-TEXT SEARCH COLUMNS (best for natural language search):
-        {', '.join(self._get_searchable_text_columns())}
+        FULL-TEXT SEARCH (FTS) COLUMNS - Enhanced search capabilities:
+        - fts_product_name: Full-text search on product names (use @@ plainto_tsquery())
+        - fts_variation_name: Full-text search on variation names (use @@ plainto_tsquery())
+        - fts_variation_name_final: Full-text search on final variation names (use @@ plainto_tsquery())
+        - fts_target_animal_species: Full-text search on animal species (use @@ plainto_tsquery())
+        - fts_ingredients: Full-text search on ingredients (use @@ plainto_tsquery())
+        - fts_type_of_meat: Full-text search on meat types (use @@ plainto_tsquery())
         
         CRITICAL NOTES:
         - ALL columns except 'id' are stored as TEXT
         - For numeric comparisons, ALWAYS use: CAST(column_name AS FLOAT) or CAST(column_name AS INTEGER)
-        - Use BOTH full-text search AND ILIKE for comprehensive text matching
-        - Handle NULL and empty string values properly with COALESCE
+        - Use ILIKE for case-insensitive text searches
+        - Use FTS columns with @@ plainto_tsquery('search_term') for better text matching
+        - FTS provides better ranking and relevance than ILIKE for text searches
+        - Handle NULL and empty string values properly
         - Some numeric columns may contain non-numeric text like "high", "low", etc.
         """
         
         
         prompt = f"""
-        You are a SQL expert specializing in pet food database queries with advanced PostgreSQL full-text search capabilities. Generate a PostgreSQL query based on the user's natural language request.
+        You are a SQL expert specializing in pet food database queries. Generate a PostgreSQL query based on the user's natural language request.
         
         Database Schema:
         {schema_info}
         
         User Query: "{user_query}"
         
-        ENHANCED GUIDELINES WITH FULL-TEXT SEARCH:
+        ENHANCED GUIDELINES:
         1. ALWAYS use SELECT * to retrieve ALL columns from the table
         2. Use ONLY column names that exist in the schema for WHERE clauses
-        3. PRIORITIZE PostgreSQL full-text search over ILIKE when appropriate
-        4. Use ts_rank() for relevance-based ordering when using full-text search
-        5. Combine full-text search with ILIKE for comprehensive coverage
-        6. Always add LIMIT 15 to prevent large result sets
+        3. PREFER Full-Text Search (FTS) columns with @@ plainto_tsquery() for text searches
+        4. Use ILIKE for case-insensitive text searches with % wildcards as fallback
+        5. Always add LIMIT 15 to prevent large result sets
+        6. Order by relevance (FTS ranking first, then id DESC for newest first)
         7. Return ONLY the SQL query, no explanations or markdown
-        8. CRITICAL: Never use SELECT with specific column names - always use SELECT *
-        
-        FULL-TEXT SEARCH IMPLEMENTATION:
-        - Use to_tsvector('english', column_name) for text processing
-        - Use plainto_tsquery('english', 'search terms') or to_tsquery('english', 'term1 & term2')
-        - Use @@ operator for matching: tsvector @@ tsquery
-        - Use ts_rank(tsvector, tsquery) for relevance scoring
-        - Combine multiple columns: to_tsvector('english', col1 || ' ' || col2)
-        - Handle NULL values: COALESCE(column_name, '')
+        8. Handle multiple criteria with AND/OR logic appropriately
+        9. CRITICAL: Never use SELECT with specific column names - always use SELECT *
+        10. For text searches, combine FTS with ILIKE for comprehensive coverage
         
         ADVANCED PATTERN EXAMPLES WITH FULL-TEXT SEARCH (ALWAYS USE SELECT *):
         
-        Simple Text Queries (use full-text search + ILIKE):
-        - "dog food" → 
-          SELECT *, ts_rank(to_tsvector('english', COALESCE(target_animal_species,'') || ' ' || COALESCE(food_genre,'')), plainto_tsquery('english', 'dog food')) as rank 
-          FROM pet_food 
-          WHERE (to_tsvector('english', COALESCE(target_animal_species,'') || ' ' || COALESCE(food_genre,'')) @@ plainto_tsquery('english', 'dog food')) 
-             OR target_animal_species ILIKE '%dog%' 
-          ORDER BY rank DESC, id DESC LIMIT 15
+        Animal Type Queries (FTS Enhanced):
+        - "dog food" → SELECT * FROM pet_food_sql_fts WHERE fts_target_animal_species @@ plainto_tsquery('dog') OR target_animal_species ILIKE '%dog%' ORDER BY (CASE WHEN fts_target_animal_species @@ plainto_tsquery('dog') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "cat treats" → SELECT * FROM pet_food_sql_fts WHERE (fts_target_animal_species @@ plainto_tsquery('cat') OR target_animal_species ILIKE '%cat%') AND food_genre ILIKE '%treat%' ORDER BY (CASE WHEN fts_target_animal_species @@ plainto_tsquery('cat') THEN 1 ELSE 2 END), id DESC LIMIT 15
         
-        - "dry puppy food" →
-          SELECT *, ts_rank(to_tsvector('english', COALESCE(food_type,'') || ' ' || COALESCE(life_stage,'') || ' ' || COALESCE(target_animal_species,'')), plainto_tsquery('english', 'dry puppy food')) as rank
-          FROM pet_food 
-          WHERE (to_tsvector('english', COALESCE(food_type,'') || ' ' || COALESCE(life_stage,'') || ' ' || COALESCE(target_animal_species,'')) @@ plainto_tsquery('english', 'dry puppy food'))
-             OR (food_type ILIKE '%dry%' AND life_stage ILIKE '%puppy%')
-          ORDER BY rank DESC, id DESC LIMIT 15
+        Product Name Queries (FTS Primary):
+        - "Science Diet" → SELECT * FROM pet_food_sql_fts WHERE fts_product_name @@ plainto_tsquery('Science Diet') OR product_name ILIKE '%Science Diet%' ORDER BY (CASE WHEN fts_product_name @@ plainto_tsquery('Science Diet') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "prescription diet" → SELECT * FROM pet_food_sql_fts WHERE fts_product_name @@ plainto_tsquery('prescription diet') OR fts_variation_name @@ plainto_tsquery('prescription diet') OR product_name ILIKE '%prescription%diet%' ORDER BY (CASE WHEN fts_product_name @@ plainto_tsquery('prescription diet') THEN 1 ELSE 2 END), id DESC LIMIT 15
         
-        Ingredient Queries (full-text + ILIKE):
-        - "chicken dog food" →
-          SELECT *, ts_rank(to_tsvector('english', COALESCE(ingredients,'') || ' ' || COALESCE(type_of_meat,'') || ' ' || COALESCE(target_animal_species,'')), plainto_tsquery('english', 'chicken dog')) as rank
-          FROM pet_food 
-          WHERE (to_tsvector('english', COALESCE(ingredients,'') || ' ' || COALESCE(type_of_meat,'') || ' ' || COALESCE(target_animal_species,'')) @@ plainto_tsquery('english', 'chicken dog'))
-             OR (ingredients ILIKE '%chicken%' AND target_animal_species ILIKE '%dog%')
-          ORDER BY rank DESC, id DESC LIMIT 15
+        Ingredient Queries (FTS Enhanced):
+        - "chicken" → SELECT * FROM pet_food_sql_fts WHERE fts_ingredients @@ plainto_tsquery('chicken') OR fts_type_of_meat @@ plainto_tsquery('chicken') OR ingredients ILIKE '%chicken%' OR type_of_meat ILIKE '%chicken%' ORDER BY (CASE WHEN fts_ingredients @@ plainto_tsquery('chicken') OR fts_type_of_meat @@ plainto_tsquery('chicken') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "salmon fish" → SELECT * FROM pet_food_sql_fts WHERE fts_ingredients @@ plainto_tsquery('salmon fish') OR fts_type_of_meat @@ plainto_tsquery('salmon') OR ingredients ILIKE '%salmon%' OR type_of_fish ILIKE '%salmon%' ORDER BY (CASE WHEN fts_ingredients @@ plainto_tsquery('salmon fish') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "grain free chicken" → SELECT * FROM pet_food_sql_fts WHERE (fts_ingredients @@ plainto_tsquery('grain free chicken') OR (fts_ingredients @@ plainto_tsquery('chicken') AND grain_classification ILIKE '%grain%free%')) OR (ingredients ILIKE '%chicken%' AND grain_classification ILIKE '%none%') ORDER BY (CASE WHEN fts_ingredients @@ plainto_tsquery('grain free chicken') THEN 1 ELSE 2 END), id DESC LIMIT 15
         
-        - "grain free cat food" →
-          SELECT *, ts_rank(to_tsvector('english', COALESCE(grain_classification,'') || ' ' || COALESCE(target_animal_species,'') || ' ' || COALESCE(food_genre,'')), plainto_tsquery('english', 'grain free cat')) as rank
-          FROM pet_food 
-          WHERE (to_tsvector('english', COALESCE(grain_classification,'') || ' ' || COALESCE(target_animal_species,'') || ' ' || COALESCE(food_genre,'')) @@ plainto_tsquery('english', 'grain free cat'))
-             OR (grain_classification ILIKE '%grain%free%' AND target_animal_species ILIKE '%cat%')
-          ORDER BY rank DESC, id DESC LIMIT 15
+        Life Stage Queries:
+        - "puppy food" → SELECT * FROM pet_food_sql_fts WHERE life_stage ILIKE '%puppy%' OR life_stage ILIKE '%young%' LIMIT 15
+        - "senior cat" → SELECT * FROM pet_food_sql_fts WHERE (fts_target_animal_species @@ plainto_tsquery('cat') OR target_animal_species ILIKE '%cat%') AND life_stage ILIKE '%senior%' ORDER BY (CASE WHEN fts_target_animal_species @@ plainto_tsquery('cat') THEN 1 ELSE 2 END), id DESC LIMIT 15
         
-        Health Condition Queries (full-text + ILIKE):
-        - "food for dogs with cancer" →
-          SELECT *, ts_rank(to_tsvector('english', COALESCE(specific_physical_condition,'') || ' ' || COALESCE(therapeutic_food_category,'') || ' ' || COALESCE(target_animal_species,'')), plainto_tsquery('english', 'dogs cancer')) as rank
-          FROM pet_food 
-          WHERE (to_tsvector('english', COALESCE(specific_physical_condition,'') || ' ' || COALESCE(therapeutic_food_category,'') || ' ' || COALESCE(target_animal_species,'')) @@ plainto_tsquery('english', 'dogs cancer'))
-             OR (specific_physical_condition ILIKE '%cancer%' AND target_animal_species ILIKE '%dog%')
-          ORDER BY rank DESC, id DESC LIMIT 15
+        Nutritional Queries (with safe numeric handling):
+        - "high protein" → SELECT * FROM pet_food_sql_fts WHERE (protein_percent ~ E'^[0-9]+\\.?[0-9]*%?$' AND CAST(REPLACE(protein_percent, '%', '') AS FLOAT) > 25) OR protein_percent ILIKE '%high%' LIMIT 15
+        - "low fat" → SELECT * FROM pet_food_sql_fts WHERE (fat_percent ~ E'^[0-9]+\\.?[0-9]*%?$' AND CAST(REPLACE(fat_percent, '%', '') AS FLOAT) < 10) OR fat_percent ILIKE '%low%' LIMIT 15
+        - "more than 30% protein" → SELECT * FROM pet_food_sql_fts WHERE protein_percent ~ E'^[0-9]+\\.?[0-9]*%?$' AND CAST(REPLACE(protein_percent, '%', '') AS FLOAT) > 30 LIMIT 15
         
-        Brand Queries (full-text + ILIKE):
-        - "Hills Science Diet" →
-          SELECT *, ts_rank(to_tsvector('english', COALESCE(brand_name_english,'') || ' ' || COALESCE(brand_name_display,'') || ' ' || COALESCE(product_name_english,'')), plainto_tsquery('english', 'Hills Science Diet')) as rank
-          FROM pet_food 
-          WHERE (to_tsvector('english', COALESCE(brand_name_english,'') || ' ' || COALESCE(brand_name_display,'') || ' ' || COALESCE(product_name_english,'')) @@ plainto_tsquery('english', 'Hills Science Diet'))
-             OR brand_name_english ILIKE '%Hills%' OR brand_name_english ILIKE '%Science%Diet%'
-          ORDER BY rank DESC, id DESC LIMIT 15
+        Brand Queries:
+        - "AATU" → SELECT * FROM pet_food_sql_fts WHERE brand_name_english ILIKE '%AATU%' OR brand_name_display ILIKE '%AATU%' LIMIT 15
         
-        Nutritional Queries (combine full-text with numeric):
-        - "high protein dog food" →
-          SELECT *, ts_rank(to_tsvector('english', COALESCE(target_animal_species,'') || ' ' || COALESCE(protein_label,'') || ' ' || COALESCE(food_genre,'')), plainto_tsquery('english', 'high protein dog')) as rank
-          FROM pet_food 
-          WHERE ((to_tsvector('english', COALESCE(target_animal_species,'') || ' ' || COALESCE(protein_label,'') || ' ' || COALESCE(food_genre,'')) @@ plainto_tsquery('english', 'high protein dog'))
-             OR (target_animal_species ILIKE '%dog%' AND (protein_percent ILIKE '%high%' OR (protein_percent ~ E'^[0-9]+\\.?[0-9]*%?$' AND CAST(REPLACE(protein_percent, '%', '') AS FLOAT) > 25))))
-          ORDER BY rank DESC, id DESC LIMIT 15
+        Food Type Queries:
+        - "dry food" → SELECT * FROM pet_food_sql_fts WHERE food_type ILIKE '%dry%' LIMIT 15
+        - "wet food" → SELECT * FROM pet_food_sql_fts WHERE food_type ILIKE '%wet%' OR food_type ILIKE '%can%' LIMIT 15
         
-        CRITICAL IMPLEMENTATION RULES:
-        1. COMBINE APPROACHES: Use full-text search AND ILIKE for best coverage
-        2. RANKING: When using full-text search, include ts_rank() in SELECT and ORDER BY rank DESC
-        3. NULL HANDLING: Always use COALESCE(column, '') in to_tsvector()
-        4. NUMERIC HANDLING: Use REPLACE(column, '%', '') before CAST for percentages
-        5. QUERY SANITIZATION: Escape single quotes in search terms
+        Combined FTS Queries:
+        - "high protein dog dry food" → SELECT * FROM pet_food_sql_fts WHERE (fts_target_animal_species @@ plainto_tsquery('dog') OR target_animal_species ILIKE '%dog%') AND food_type ILIKE '%dry%' AND ((protein_percent ~ E'^[0-9]+\\.?[0-9]*%?$' AND CAST(REPLACE(protein_percent, '%', '') AS FLOAT) > 25) OR protein_percent ILIKE '%high%') ORDER BY (CASE WHEN fts_target_animal_species @@ plainto_tsquery('dog') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "Royal Canin digestive care cat" → SELECT * FROM pet_food_sql_fts WHERE brand_name_english ILIKE '%Royal%Canin%' AND (fts_target_animal_species @@ plainto_tsquery('cat') OR target_animal_species ILIKE '%cat%') AND (fts_product_name @@ plainto_tsquery('digestive care') OR product_name ILIKE '%digestive%care%') ORDER BY (CASE WHEN fts_product_name @@ plainto_tsquery('digestive care') AND fts_target_animal_species @@ plainto_tsquery('cat') THEN 1 ELSE 2 END), id DESC LIMIT 15
         
-        QUERY STRUCTURE TEMPLATE:
-        SELECT *, ts_rank(tsvector_expression, tsquery_expression) as rank
-        FROM pet_food 
-        WHERE (full_text_condition) OR (ilike_fallback_condition)
-        ORDER BY rank DESC, id DESC 
-        LIMIT 15
+        CRITICAL NUMERIC HANDLING:
+        - Use REPLACE(column, '%', '') to remove % signs before CAST
+        - Use regex E'^[0-9]+\\.?[0-9]*%?$' to validate numeric values
+        - Always provide fallback with ILIKE for text matches
+        - Combine numeric and text searches with OR
+        
+        FULL-TEXT SEARCH BEST PRACTICES:
+        - Use plainto_tsquery() for natural language queries (handles phrase breaking automatically)
+        - Combine FTS with ILIKE for comprehensive coverage: "fts_column @@ plainto_tsquery('term') OR original_column ILIKE '%term%'"
+        - Use CASE statements for relevance ranking: ORDER BY (CASE WHEN fts_column @@ plainto_tsquery('term') THEN 1 ELSE 2 END)
+        - For multi-word searches, prefer FTS over ILIKE for better ranking
+        - Always include fallback ILIKE searches for columns without FTS support
+        
+        FTS COLUMN MAPPING:
+        - Product names → use fts_product_name, fts_variation_name, fts_variation_name_final
+        - Ingredients → use fts_ingredients and fts_type_of_meat
+        - Animal types → use fts_target_animal_species
+        - For other columns (brands, nutritional info, etc.) → use regular ILIKE searches
         
         MANDATORY FORMAT:
-        - ALWAYS include both full-text search AND ILIKE conditions with OR
-        - ALWAYS use ts_rank() for ordering when using full-text search
-        - ALWAYS use SELECT * (never specific column names)
-        - ALWAYS end with LIMIT 15
-        - Return ONLY the SQL query, no explanations
+        Your response must ALWAYS start with "SELECT * FROM pet_food_sql_fts WHERE..." and end with "LIMIT 15"
+        NEVER use specific column names in SELECT clause - ALWAYS use SELECT *
+        For FTS queries, include ORDER BY clause for relevance ranking
         
         SQL Query:
         """
@@ -463,56 +315,27 @@ class PetFoodQuerySystem:
     
     
     def _get_fallback_query(self, user_query: str) -> str:
-        """Generate fallback query with full-text search based on common patterns"""
+        """Generate fallback query based on common patterns - ALWAYS uses SELECT * with FTS enhancement"""
         query_lower = user_query.lower()
         table_name = self.schema['table_name']
         
-        # Extract search terms from the query
-        search_terms = [term.strip() for term in query_lower.split() if len(term.strip()) > 2]
-        
-        if not search_terms:
-            return f"SELECT * FROM {table_name} ORDER BY id DESC LIMIT 15"
-        
-        # Build full-text search condition with relevant columns
+        # Enhanced pattern matching for fallback with FTS - all use SELECT * to get ALL columns
         if any(word in query_lower for word in ['dog', 'canine']):
-            # Dog-related query
-            search_text = ' '.join([term for term in search_terms if term not in ['dog', 'canine']] + ['dog'])
-            return f"""
-            SELECT *, ts_rank(to_tsvector('english', COALESCE(target_animal_species,'') || ' ' || COALESCE(food_genre,'') || ' ' || COALESCE(life_stage,'')), plainto_tsquery('english', '{search_text}')) as rank
-            FROM {table_name} 
-            WHERE (to_tsvector('english', COALESCE(target_animal_species,'') || ' ' || COALESCE(food_genre,'') || ' ' || COALESCE(life_stage,'')) @@ plainto_tsquery('english', '{search_text}'))
-               OR target_animal_species ILIKE '%dog%'
-            ORDER BY rank DESC, id DESC LIMIT 15
-            """
+            return f"SELECT * FROM {table_name} WHERE fts_target_animal_species @@ plainto_tsquery('dog') OR target_animal_species ILIKE '%dog%' ORDER BY (CASE WHEN fts_target_animal_species @@ plainto_tsquery('dog') THEN 1 ELSE 2 END), id DESC LIMIT 15"
         elif any(word in query_lower for word in ['cat', 'feline', 'kitten']):
-            # Cat-related query
-            search_text = ' '.join([term for term in search_terms if term not in ['cat', 'feline', 'kitten']] + ['cat'])
-            return f"""
-            SELECT *, ts_rank(to_tsvector('english', COALESCE(target_animal_species,'') || ' ' || COALESCE(food_genre,'') || ' ' || COALESCE(life_stage,'')), plainto_tsquery('english', '{search_text}')) as rank
-            FROM {table_name} 
-            WHERE (to_tsvector('english', COALESCE(target_animal_species,'') || ' ' || COALESCE(food_genre,'') || ' ' || COALESCE(life_stage,'')) @@ plainto_tsquery('english', '{search_text}'))
-               OR target_animal_species ILIKE '%cat%'
-            ORDER BY rank DESC, id DESC LIMIT 15
-            """
-        elif any(word in query_lower for word in ['protein', 'high', 'low', 'fat']):
-            # Nutritional query
-            search_text = ' '.join(search_terms)
-            return f"""
-            SELECT *, ts_rank(to_tsvector('english', COALESCE(protein_label,'') || ' ' || COALESCE(fat_label,'') || ' ' || COALESCE(ingredients,'')), plainto_tsquery('english', '{search_text}')) as rank
-            FROM {table_name} 
-            WHERE (to_tsvector('english', COALESCE(protein_label,'') || ' ' || COALESCE(fat_label,'') || ' ' || COALESCE(ingredients,'')) @@ plainto_tsquery('english', '{search_text}'))
-               OR protein_percent ILIKE '%high%' OR ingredients ILIKE '%protein%'
-            ORDER BY rank DESC, id DESC LIMIT 15
-            """
+            return f"SELECT * FROM {table_name} WHERE fts_target_animal_species @@ plainto_tsquery('cat') OR target_animal_species ILIKE '%cat%' ORDER BY (CASE WHEN fts_target_animal_species @@ plainto_tsquery('cat') THEN 1 ELSE 2 END), id DESC LIMIT 15"
+        elif any(word in query_lower for word in ['chicken']):
+            return f"SELECT * FROM {table_name} WHERE fts_ingredients @@ plainto_tsquery('chicken') OR fts_type_of_meat @@ plainto_tsquery('chicken') OR ingredients ILIKE '%chicken%' OR type_of_meat ILIKE '%chicken%' ORDER BY (CASE WHEN fts_ingredients @@ plainto_tsquery('chicken') OR fts_type_of_meat @@ plainto_tsquery('chicken') THEN 1 ELSE 2 END), id DESC LIMIT 15"
+        elif any(word in query_lower for word in ['salmon', 'fish']):
+            return f"SELECT * FROM {table_name} WHERE fts_ingredients @@ plainto_tsquery('salmon') OR fts_type_of_meat @@ plainto_tsquery('salmon') OR ingredients ILIKE '%salmon%' OR type_of_fish ILIKE '%salmon%' ORDER BY (CASE WHEN fts_ingredients @@ plainto_tsquery('salmon') THEN 1 ELSE 2 END), id DESC LIMIT 15"
+        elif any(word in query_lower for word in ['protein', 'high protein']):
+            return f"SELECT * FROM {table_name} WHERE protein_percent ILIKE '%high%' OR ingredients ILIKE '%protein%' LIMIT 15"
+        elif any(word in query_lower for word in ['prescription', 'diet', 'science']):
+            return f"SELECT * FROM {table_name} WHERE fts_product_name @@ plainto_tsquery('{user_query}') OR fts_variation_name @@ plainto_tsquery('{user_query}') OR product_name ILIKE '%{user_query}%' ORDER BY (CASE WHEN fts_product_name @@ plainto_tsquery('{user_query}') THEN 1 ELSE 2 END), id DESC LIMIT 15"
         else:
-            # General text search across main columns
-            search_text = ' '.join(search_terms)
-            return f"""
-            SELECT *, ts_rank(to_tsvector('english', COALESCE(brand_name_english,'') || ' ' || COALESCE(product_name_english,'') || ' ' || COALESCE(ingredients,'') || ' ' || COALESCE(target_animal_species,'')), plainto_tsquery('english', '{search_text}')) as rank
-            FROM {table_name} 
-            WHERE (to_tsvector('english', COALESCE(brand_name_english,'') || ' ' || COALESCE(product_name_english,'') || ' ' || COALESCE(ingredients,'') || ' ' || COALESCE(target_animal_species,'')) @@ plainto_tsquery('english', '{search_text}'))
-            ORDER BY rank DESC, id DESC LIMIT 15
-            """
+            # General search across all FTS columns
+            search_term = user_query.replace("'", "''")  # Escape single quotes
+            return f"SELECT * FROM {table_name} WHERE fts_product_name @@ plainto_tsquery('{search_term}') OR fts_variation_name @@ plainto_tsquery('{search_term}') OR fts_ingredients @@ plainto_tsquery('{search_term}') OR fts_target_animal_species @@ plainto_tsquery('{search_term}') ORDER BY (CASE WHEN fts_product_name @@ plainto_tsquery('{search_term}') THEN 1 WHEN fts_variation_name @@ plainto_tsquery('{search_term}') THEN 2 ELSE 3 END), id DESC LIMIT 15"
     
     def execute_query(self, sql_query: str) -> Optional[pd.DataFrame]:
         """
@@ -1090,105 +913,39 @@ class PetFoodQuerySystem:
     
     def generate_fuzzy_sql_query(self, fuzzy_results: Dict[str, List[Tuple[str, float]]]) -> str:
         """
-        Generate enhanced SQL query with full-text search based on fuzzy matching results
+        Generate SQL query based on fuzzy matching results
         
         Args:
             fuzzy_results: Dictionary mapping column names to matched values
             
         Returns:
-            Generated SQL query string with full-text search and ILIKE fallback
+            Generated SQL query string
         """
         if not fuzzy_results:
             return f"SELECT * FROM {self.schema['table_name']} ORDER BY id DESC LIMIT 10"
         
-        table_name = self.schema['table_name']
-        
-        # Separate text-searchable columns from others
-        text_columns = self._get_searchable_text_columns()
-        
-        fts_conditions = []
-        ilike_conditions = []
-        all_search_terms = []
+        where_conditions = []
         
         for column_name, matches in fuzzy_results.items():
             if column_name in self.schema['columns']:
-                # Extract search terms for full-text search
-                column_terms = [match_value for match_value, score in matches[:3]]  # Top 3 matches
-                all_search_terms.extend(column_terms)
-                
-                # Create ILIKE conditions as fallback
-                column_ilike_conditions = []
+                # Create OR conditions for all matched values in this column
+                column_conditions = []
                 for match_value, score in matches:
                     # Escape single quotes in the value
                     escaped_value = match_value.replace("'", "''")
-                    column_ilike_conditions.append(f"{column_name} ILIKE '%{escaped_value}%'")
+                    column_conditions.append(f"{column_name} ILIKE '%{escaped_value}%'")
                 
-                if column_ilike_conditions:
-                    ilike_conditions.append(f"({' OR '.join(column_ilike_conditions)})")
+                if column_conditions:
+                    # Combine with OR for same column, AND for different columns
+                    where_conditions.append(f"({' OR '.join(column_conditions)})")
         
-        # Build full-text search condition if we have searchable terms
-        if all_search_terms:
-            # Combine all search terms for comprehensive search
-            search_text = ' '.join(set(all_search_terms))  # Remove duplicates
-            
-            # Select relevant columns for full-text search based on fuzzy results
-            relevant_fts_columns = []
-            for column_name in fuzzy_results.keys():
-                if column_name in text_columns:
-                    relevant_fts_columns.append(column_name)
-            
-            # If no specific text columns found, use general searchable columns
-            if not relevant_fts_columns:
-                relevant_fts_columns = ['brand_name_english', 'product_name_english', 'ingredients', 'target_animal_species']
-            
-            # Build tsvector for relevant columns
-            tsvector_parts = [f"COALESCE({col}, '')" for col in relevant_fts_columns if col in self.schema['columns']]
-            
-            if tsvector_parts:
-                combined_tsvector = f"to_tsvector('english', {' || \' \' || '.join(tsvector_parts)})"
-                tsquery = f"plainto_tsquery('english', '{search_text}')"
-                
-                fts_condition = f"({combined_tsvector} @@ {tsquery})"
-                fts_conditions.append(fts_condition)
-        
-        # Combine conditions
-        all_conditions = []
-        
-        # Add full-text search condition
-        if fts_conditions:
-            all_conditions.extend(fts_conditions)
-        
-        # Add ILIKE conditions
-        if ilike_conditions:
-            all_conditions.extend(ilike_conditions)
-        
-        if all_conditions:
-            # Combine with OR for broader matching
-            where_clause = " OR ".join(all_conditions)
-            
-            # Build query with ranking if full-text search is used
-            if fts_conditions and all_search_terms:
-                search_text = ' '.join(set(all_search_terms))
-                tsvector_parts = [f"COALESCE({col}, '')" for col in relevant_fts_columns if col in self.schema['columns']]
-                combined_tsvector = f"to_tsvector('english', {' || \' \' || '.join(tsvector_parts)})"
-                tsquery = f"plainto_tsquery('english', '{search_text}')"
-                
-                sql_query = f"""
-                SELECT *, ts_rank({combined_tsvector}, {tsquery}) as rank
-                FROM {table_name} 
-                WHERE {where_clause}
-                ORDER BY rank DESC, id DESC 
-                LIMIT 10
-                """
-            else:
-                sql_query = f"SELECT * FROM {table_name} WHERE {where_clause} LIMIT 10"
+        if where_conditions:
+            where_clause = " AND ".join(where_conditions)
+            sql_query = f"SELECT * FROM {self.schema['table_name']} WHERE {where_clause} LIMIT 10"
         else:
-            sql_query = f"SELECT * FROM {table_name} ORDER BY id DESC LIMIT 10"
+            sql_query = f"SELECT * FROM {self.schema['table_name']} ORDER BY id DESC LIMIT 10"
         
-        # Clean up the query formatting
-        sql_query = ' '.join(sql_query.split())
-        
-        logger.info(f"Generated enhanced fuzzy SQL query: {sql_query}")
+        logger.info(f"Generated fuzzy SQL query: {sql_query}")
         return sql_query
     
     def combine_results(self, regular_results: Optional[pd.DataFrame], fuzzy_results: Optional[pd.DataFrame]) -> pd.DataFrame:
