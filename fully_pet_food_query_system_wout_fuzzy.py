@@ -4,23 +4,16 @@
 import os
 import pandas as pd
 from sqlalchemy import create_engine, text
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Dict, Any, Optional, Tuple
 from dotenv import load_dotenv
 try:
     import google.generativeai as genai  # pyright: ignore[reportMissingImports]
 except ImportError:
     print("Warning: google-generativeai not installed. Run: pip install google-generativeai")
     genai = None
-try:
-    from rapidfuzz import process
-except ImportError:
-    print("Warning: rapidfuzz not installed. Run: pip install rapidfuzz")
-    process = None
 from datetime import datetime
 import logging
 from pathlib import Path
-import json
-import re
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -557,7 +550,7 @@ class PetFoodQuerySystem:
     
     def _save_result_to_file(self, result: Dict[str, Any]) -> str:
         """
-        Save enhanced query result to a text file in the results folder
+        Save query result to a text file in the results folder
         
         Args:
             result: Dictionary containing query result data
@@ -570,69 +563,23 @@ class PetFoodQuerySystem:
         # Clean user query for filename (remove special characters)
         clean_query = "".join(c for c in result['user_query'] if c.isalnum() or c in (' ', '-', '_')).rstrip()
         clean_query = clean_query.replace(' ', '_')[:50]  # Limit length
-        
-        # Use enhanced filename if fuzzy matching was used
-        if result.get('fuzzy_count', 0) > 0:
-            filename = f"enhanced_query_{timestamp}_{clean_query}.txt"
-        else:
-            filename = f"query_{timestamp}_{clean_query}.txt"
+        filename = f"query_{timestamp}_{clean_query}.txt"
         file_path = self.results_folder / filename
         
         try:
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write("="*80 + "\n")
-                if result.get('fuzzy_count', 0) > 0:
-                    f.write("ENHANCED PET FOOD QUERY SYSTEM - FUZZY MATCHING RESULT\n")
-                else:
-                    f.write("PET FOOD QUERY SYSTEM - RESULT\n")
+                f.write("PET FOOD QUERY SYSTEM - RESULT\n")
                 f.write("="*80 + "\n\n")
                 
                 f.write(f"Timestamp: {result.get('timestamp', 'N/A')}\n")
                 f.write(f"User Query: {result['user_query']}\n")
                 f.write(f"Processing Time: {result.get('processing_time', 0):.2f}s\n")
+                f.write(f"Results Found: {result.get('result_count', 0)} products\n\n")
                 
-                # Enhanced result information
-                if result.get('regular_count') is not None:
-                    f.write(f"Regular Query Results: {result.get('regular_count', 0)} products\n")
-                    f.write(f"Fuzzy Matching Results: {result.get('fuzzy_count', 0)} additional products\n")
-                    f.write(f"Total Combined Results: {result.get('result_count', 0)} unique products\n\n")
-                else:
-                    f.write(f"Results Found: {result.get('result_count', 0)} products\n\n")
-                
-                # Query element identification
-                if result.get('identified_elements'):
-                    f.write("Identified Query Elements:\n")
-                    f.write("-" * 40 + "\n")
-                    for column, terms in result['identified_elements'].items():
-                        f.write(f"{column}: {', '.join(terms)}\n")
-                    f.write("\n")
-                
-                # Fuzzy matching results
-                if result.get('fuzzy_matches'):
-                    f.write("Fuzzy Matching Results:\n")
-                    f.write("-" * 40 + "\n")
-                    for column, matches in result['fuzzy_matches'].items():
-                        f.write(f"{column}:\n")
-                        for match, score in matches:
-                            f.write(f"  - '{match}' (Score: {score})\n")
-                    f.write("\n")
-                
-                # SQL Queries
-                if result.get('regular_sql_query'):
-                    f.write("Regular SQL Query:\n")
-                    f.write("-" * 40 + "\n")
-                    f.write(f"{result['regular_sql_query']}\n\n")
-                
-                if result.get('fuzzy_sql_query'):
-                    f.write("Fuzzy SQL Query:\n")
-                    f.write("-" * 40 + "\n")
-                    f.write(f"{result['fuzzy_sql_query']}\n\n")
-                
-                # Fallback for old format
-                if result.get('sql_query') and not result.get('regular_sql_query'):
-                    f.write("SQL Query:\n")
-                    f.write("-" * 40 + "\n")
-                    f.write(f"{result['sql_query']}\n\n")
+                f.write("SQL Query:\n")
+                f.write("-" * 40 + "\n")
+                f.write(f"{result['sql_query']}\n\n")
                 
                 f.write("AI Generated Answer:\n")
                 f.write("-" * 40 + "\n")
@@ -654,351 +601,38 @@ class PetFoodQuerySystem:
             logger.error(f"Error saving result to file: {e}")
             return ""
     
-    def identify_query_elements(self, user_query: str) -> Dict[str, List[str]]:
-        """
-        Use LLM to identify which words/phrases in the user query belong to which database columns
-        
-        Args:
-            user_query: User's natural language query
-            
-        Returns:
-            Dictionary mapping column names to extracted terms
-        """
-        # Create schema description for LLM
-        schema_description = "Database Schema and Columns:\n"
-        for column in self.schema['columns']:
-            column_description = self._get_column_description(column)
-            schema_description += f"- {column}: {column_description}\n"
-        
-        prompt = f"""
-        You are a database query expert. Analyze the user query and identify which specific words or phrases belong to which database columns.
-        
-        {schema_description}
-        
-        User Query: "{user_query}"
-        
-        Task: Extract specific terms from the user query that could be searched in each database column.
-        
-        Instructions:
-        1. Only extract terms that are explicitly mentioned in the user query
-        2. Map each extracted term to the most appropriate column name
-        3. Include variations and synonyms that might appear in the data
-        4. Focus on specific searchable values rather than generic terms
-        5. Return results in JSON format
-        
-        Example format:
-        {{
-            "brand_name_english": ["Hills", "Royal Canin"],
-            "target_animal_species": ["dog", "canine"],
-            "specific_physical_condition": ["kidney disease", "renal", "cancer"],
-            "type_of_meat": ["chicken", "poultry"],
-            "life_stage": ["puppy", "young", "senior"]
-        }}
-        
-        Important: Only include columns and terms that are relevant to the user query.
-        
-        Analyze the query and return ONLY the JSON object:
-        """
-        
-        try:
-            response = self.model.generate_content(prompt)
-            response_text = response.text.strip()
-            
-            # Clean up response to extract JSON
-            if '```json' in response_text:
-                json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
-                if json_match:
-                    response_text = json_match.group(1)
-            elif '```' in response_text:
-                json_match = re.search(r'```\s*(\{.*?\})\s*```', response_text, re.DOTALL)
-                if json_match:
-                    response_text = json_match.group(1)
-            
-            # Try to parse JSON
-            identified_elements = json.loads(response_text)
-            logger.info(f"Identified query elements: {identified_elements}")
-            return identified_elements
-            
-        except Exception as e:
-            logger.error(f"Error identifying query elements: {e}")
-            # Fallback: basic keyword extraction
-            return self._basic_keyword_extraction(user_query)
-    
-    def _get_column_description(self, column: str) -> str:
-        """Get description for a database column"""
-        descriptions = {
-            "target_animal_species": "Type of animal (dog, cat, etc.)",
-            "brand_name_english": "Brand names in English",
-            "brand_name_display": "Display brand names",
-            "product_name_english": "Product names in English",
-            "specific_physical_condition": "Health conditions and medical issues",
-            "therapeutic_food_category": "Medical/therapeutic purposes",
-            "life_stage": "Age groups (puppy, adult, senior, etc.)",
-            "food_type": "Type of food (dry, wet, treats, etc.)",
-            "food_genre": "Food genre/category",
-            "ingredients": "List of ingredients",
-            "type_of_meat": "Type of meat used",
-            "type_of_fish": "Type of fish used", 
-            "grain_classification": "Grain content classification",
-            "legume_classification": "Legume content",
-            "protein_percent": "Protein percentage",
-            "fat_percent": "Fat percentage",
-            "carbohydrates_percent": "Carbohydrate percentage"
-        }
-        return descriptions.get(column, f"Database column: {column}")
-    
-    def _basic_keyword_extraction(self, user_query: str) -> Dict[str, List[str]]:
-        """Fallback method for basic keyword extraction"""
-        query_lower = user_query.lower()
-        extracted = {}
-        
-        # Basic pattern matching for common terms
-        if any(word in query_lower for word in ['dog', 'canine', 'puppy']):
-            extracted["target_animal_species"] = ["dog", "canine"]
-        elif any(word in query_lower for word in ['cat', 'feline', 'kitten']):
-            extracted["target_animal_species"] = ["cat", "feline"]
-        
-        if any(word in query_lower for word in ['senior', 'old', 'elderly']):
-            extracted["life_stage"] = ["senior", "elderly"]
-        elif any(word in query_lower for word in ['puppy', 'young', 'junior']):
-            extracted["life_stage"] = ["puppy", "young"]
-        elif any(word in query_lower for word in ['kitten', 'young cat']):
-            extracted["life_stage"] = ["kitten", "young"]
-        
-        if any(word in query_lower for word in ['chicken', 'poultry']):
-            extracted["type_of_meat"] = ["chicken", "poultry"]
-        elif any(word in query_lower for word in ['salmon', 'fish']):
-            extracted["type_of_fish"] = ["salmon", "fish"]
-        
-        if any(word in query_lower for word in ['cancer', 'tumor', 'oncology']):
-            extracted["specific_physical_condition"] = ["cancer", "tumor", "oncology"]
-        elif any(word in query_lower for word in ['kidney', 'renal']):
-            extracted["specific_physical_condition"] = ["kidney", "renal"]
-        
-        # Brand extraction
-        brands = ['hills', 'royal canin', 'aatu', 'purina', 'wellness']
-        for brand in brands:
-            if brand in query_lower:
-                extracted["brand_name_english"] = [brand.title()]
-                break
-        
-        return extracted
-    
-    def perform_fuzzy_matching(self, identified_elements: Dict[str, List[str]], score_threshold: int = 75) -> Dict[str, List[Tuple[str, float]]]:
-        """
-        Perform fuzzy matching for identified elements against database data
-        
-        Args:
-            identified_elements: Dictionary mapping column names to search terms
-            score_threshold: Minimum fuzzy match score (0-100)
-            
-        Returns:
-            Dictionary mapping column names to list of (matched_value, score) tuples
-        """
-        if process is None:
-            logger.warning("rapidfuzz not available - fuzzy matching disabled")
-            return {}
-        
-        fuzzy_results = {}
-        
-        for column_name, search_terms in identified_elements.items():
-            if column_name not in self.schema['columns']:
-                logger.warning(f"Column '{column_name}' not found in database schema")
-                continue
-            
-            # Get unique values from the database column
-            try:
-                query = f"SELECT DISTINCT {column_name} FROM {self.schema['table_name']} WHERE {column_name} IS NOT NULL AND {column_name} != ''"
-                column_df = pd.read_sql(text(query), self.engine)
-                column_values = column_df[column_name].tolist()
-                column_values = [str(val).strip() for val in column_values if str(val).strip()]
-                
-                if not column_values:
-                    continue
-                
-                logger.info(f"Fuzzy matching against {len(column_values)} values in column '{column_name}'")
-                
-            except Exception as e:
-                logger.error(f"Error fetching column data for '{column_name}': {e}")
-                continue
-            
-            column_matches = []
-            
-            for search_term in search_terms:
-                # Perform fuzzy matching
-                matches = process.extract(search_term, column_values, limit=10)
-                
-                # Filter by score threshold
-                good_matches = [(match, score) for match, score, _ in matches if score >= score_threshold]
-                column_matches.extend(good_matches)
-            
-            if column_matches:
-                # Remove duplicates and sort by score
-                unique_matches = {}
-                for match, score in column_matches:
-                    if match not in unique_matches or score > unique_matches[match]:
-                        unique_matches[match] = score
-                
-                sorted_matches = [(match, score) for match, score in sorted(unique_matches.items(), key=lambda x: x[1], reverse=True)]
-                fuzzy_results[column_name] = sorted_matches[:5]  # Top 5 matches per column
-                logger.info(f"Found {len(sorted_matches)} fuzzy matches for column '{column_name}'")
-        
-        logger.info(f"Fuzzy matching completed for {len(fuzzy_results)} columns")
-        return fuzzy_results
-    
-    def generate_fuzzy_sql_query(self, fuzzy_results: Dict[str, List[Tuple[str, float]]]) -> str:
-        """
-        Generate SQL query based on fuzzy matching results
-        
-        Args:
-            fuzzy_results: Dictionary mapping column names to matched values
-            
-        Returns:
-            Generated SQL query string
-        """
-        if not fuzzy_results:
-            return f"SELECT * FROM {self.schema['table_name']} ORDER BY id DESC LIMIT 10"
-        
-        where_conditions = []
-        
-        for column_name, matches in fuzzy_results.items():
-            if column_name in self.schema['columns']:
-                # Create OR conditions for all matched values in this column
-                column_conditions = []
-                for match_value, score in matches:
-                    # Escape single quotes in the value
-                    escaped_value = match_value.replace("'", "''")
-                    column_conditions.append(f"{column_name} ILIKE '%{escaped_value}%'")
-                
-                if column_conditions:
-                    # Combine with OR for same column, AND for different columns
-                    where_conditions.append(f"({' OR '.join(column_conditions)})")
-        
-        if where_conditions:
-            where_clause = " AND ".join(where_conditions)
-            sql_query = f"SELECT * FROM {self.schema['table_name']} WHERE {where_clause} LIMIT 10"
-        else:
-            sql_query = f"SELECT * FROM {self.schema['table_name']} ORDER BY id DESC LIMIT 10"
-        
-        logger.info(f"Generated fuzzy SQL query: {sql_query}")
-        return sql_query
-    
-    def combine_results(self, regular_results: Optional[pd.DataFrame], fuzzy_results: Optional[pd.DataFrame]) -> pd.DataFrame:
-        """
-        Combine results from regular and fuzzy queries, removing duplicates
-        
-        Args:
-            regular_results: Results from regular query system
-            fuzzy_results: Results from fuzzy matching query
-            
-        Returns:
-            Combined DataFrame with duplicates removed
-        """
-        combined_df = pd.DataFrame()
-        
-        # Add regular results first
-        if regular_results is not None and not regular_results.empty:
-            combined_df = regular_results.copy()
-            logger.info(f"Added {len(regular_results)} regular results")
-        
-        # Add fuzzy results
-        if fuzzy_results is not None and not fuzzy_results.empty:
-            if combined_df.empty:
-                combined_df = fuzzy_results.copy()
-                logger.info(f"Added {len(fuzzy_results)} fuzzy results")
-            else:
-                # Remove duplicates based on ID column
-                if 'id' in fuzzy_results.columns and 'id' in combined_df.columns:
-                    # Get IDs that are not already in regular results
-                    existing_ids = set(combined_df['id'].values)
-                    new_fuzzy_results = fuzzy_results[~fuzzy_results['id'].isin(existing_ids)]
-                    
-                    if not new_fuzzy_results.empty:
-                        combined_df = pd.concat([combined_df, new_fuzzy_results], ignore_index=True)
-                        logger.info(f"Added {len(new_fuzzy_results)} new fuzzy results (removed {len(fuzzy_results) - len(new_fuzzy_results)} duplicates)")
-                else:
-                    # Fallback: simple concatenation and drop duplicates
-                    combined_df = pd.concat([combined_df, fuzzy_results], ignore_index=True).drop_duplicates()
-                    logger.info("Combined results with fallback deduplication")
-        
-        logger.info(f"Final combined results: {len(combined_df)} products")
-        return combined_df
-    
     def query(self, user_input: str) -> Dict[str, Any]:
         """
-        Main method to process a user query end-to-end with enhanced fuzzy matching
+        Main method to process a user query end-to-end
         
         Args:
             user_input: Natural language query from user
             
         Returns:
-            Dictionary with combined query results and answer
+            Dictionary with query results and answer
         """
         start_time = datetime.now()
-        logger.info(f"🔍 Processing enhanced query with fuzzy matching: '{user_input}'")
+        logger.info(f"🔍 Processing query: '{user_input}'")
         
         try:
-            # Step 1: Regular SQL query generation and execution
-            logger.info("📝 Generating regular SQL query...")
-            regular_sql_query = self.generate_sql_query(user_input)
+            # Step 1: Generate SQL query
+            logger.info("📝 Generating SQL query...")
+            sql_query = self.generate_sql_query(user_input)
             
-            logger.info("🔄 Executing regular database query...")
-            regular_results = self.execute_query(regular_sql_query)
-            regular_count = len(regular_results) if regular_results is not None else 0
-            logger.info(f"Regular query found {regular_count} results")
+            # Step 2: Execute query
+            logger.info("🔄 Executing database query...")
+            results = self.execute_query(sql_query)
             
-            # Step 2: Fuzzy matching enhancement
-            logger.info("🧠 Identifying query elements for fuzzy matching...")
-            identified_elements = self.identify_query_elements(user_input)
-            
-            fuzzy_results = None
-            fuzzy_sql_query = ""
-            fuzzy_count = 0
-            fuzzy_matches = {}
-            
-            if identified_elements and process is not None:
-                logger.info("🎯 Performing fuzzy matching...")
-                fuzzy_matches = self.perform_fuzzy_matching(identified_elements)
-                
-                if fuzzy_matches:
-                    logger.info("📝 Generating fuzzy SQL query...")
-                    fuzzy_sql_query = self.generate_fuzzy_sql_query(fuzzy_matches)
-                    
-                    logger.info("🔄 Executing fuzzy database query...")
-                    fuzzy_results = self.execute_query(fuzzy_sql_query)
-                    fuzzy_count = len(fuzzy_results) if fuzzy_results is not None else 0
-                    logger.info(f"Fuzzy query found {fuzzy_count} results")
-                else:
-                    logger.info("No fuzzy matches found")
-            else:
-                if process is None:
-                    logger.warning("Fuzzy matching disabled - rapidfuzz not available")
-                else:
-                    logger.info("No query elements identified for fuzzy matching")
-            
-            # Step 3: Combine results
-            logger.info("🔗 Combining regular and fuzzy results...")
-            combined_results = self.combine_results(regular_results, fuzzy_results)
-            
-            # Calculate actual new fuzzy results (excluding duplicates)
-            actual_fuzzy_count = max(0, len(combined_results) - regular_count)
-            
-            if combined_results is None or combined_results.empty:
+            if results is None:
                 error_result = {
                     "user_query": user_input,
-                    "regular_sql_query": regular_sql_query,
-                    "fuzzy_sql_query": fuzzy_sql_query,
-                    "identified_elements": identified_elements,
-                    "fuzzy_matches": fuzzy_matches,
+                    "sql_query": sql_query,
                     "results": None,
-                    "answer": "Sorry, no results were found with both regular and fuzzy matching techniques. Please try rephrasing your question.",
+                    "answer": "Sorry, there was an error executing the database query. Please try rephrasing your question.",
                     "timestamp": datetime.now().isoformat(),
                     "error": True,
-                    "regular_count": regular_count,
-                    "fuzzy_count": actual_fuzzy_count,
-                    "result_count": 0,
                     "processing_time": (datetime.now() - start_time).total_seconds(),
-                    "error_message": "No results found with enhanced search"
+                    "error_message": "Database query execution failed"
                 }
                 # Save error result to file
                 saved_file = self._save_result_to_file(error_result)
@@ -1006,26 +640,18 @@ class PetFoodQuerySystem:
                     error_result["saved_file"] = saved_file
                 return error_result
             
-            # Step 4: Generate enhanced final answer
-            logger.info("🤖 Generating enhanced intelligent answer...")
-            answer = self.generate_enhanced_final_answer(user_input, combined_results, regular_count, actual_fuzzy_count, identified_elements, fuzzy_matches)
+            # Step 3: Generate final answer
+            logger.info("🤖 Generating intelligent answer...")
+            answer = self.generate_final_answer(user_input, results)
             
-            # Prepare enhanced result
+            # Prepare final result
             result = {
                 "user_query": user_input,
-                "regular_sql_query": regular_sql_query,
-                "fuzzy_sql_query": fuzzy_sql_query,
-                "identified_elements": identified_elements,
-                "fuzzy_matches": fuzzy_matches,
-                "regular_results": regular_results,
-                "fuzzy_results": fuzzy_results,
-                "combined_results": combined_results,
-                "results": combined_results,  # For backward compatibility
+                "sql_query": sql_query,
+                "results": results,
                 "answer": answer,
                 "timestamp": datetime.now().isoformat(),
-                "regular_count": regular_count,
-                "fuzzy_count": actual_fuzzy_count,
-                "result_count": len(combined_results),
+                "result_count": len(results),
                 "processing_time": (datetime.now() - start_time).total_seconds()
             }
             
@@ -1034,18 +660,16 @@ class PetFoodQuerySystem:
             if saved_file:
                 result["saved_file"] = saved_file
             
-            logger.info(f"✅ Enhanced query completed in {result['processing_time']:.2f}s")
-            logger.info(f"📊 Results: {regular_count} regular + {actual_fuzzy_count} fuzzy = {len(combined_results)} total")
+            logger.info(f"✅ Query completed in {result['processing_time']:.2f}s")
             return result
             
         except Exception as e:
-            logger.error(f"❌ Unexpected error in enhanced query processing: {e}")
+            logger.error(f"❌ Unexpected error in query processing: {e}")
             error_result = {
                 "user_query": user_input,
-                "regular_sql_query": "ERROR",
-                "fuzzy_sql_query": "ERROR",
+                "sql_query": "ERROR",
                 "results": None,
-                "answer": "I encountered an unexpected error while processing your enhanced query. Please try again with a different question.",
+                "answer": "I encountered an unexpected error while processing your query. Please try again with a different question.",
                 "timestamp": datetime.now().isoformat(),
                 "error": True,
                 "error_message": str(e),
@@ -1057,115 +681,12 @@ class PetFoodQuerySystem:
                 error_result["saved_file"] = saved_file
             return error_result
     
-    def generate_enhanced_final_answer(self, user_query: str, combined_results: pd.DataFrame, regular_count: int, fuzzy_count: int, identified_elements: Dict[str, List[str]], fuzzy_matches: Dict[str, List[Tuple[str, float]]]) -> str:
-        """
-        Generate enhanced final answer using both regular and fuzzy results
-        
-        Args:
-            user_query: Original user query
-            combined_results: Combined DataFrame with all results
-            regular_count: Number of regular query results
-            fuzzy_count: Number of additional fuzzy results
-            identified_elements: Query elements identified by LLM
-            fuzzy_matches: Fuzzy matching results
-            
-        Returns:
-            Enhanced natural language answer
-        """
-        if combined_results.empty:
-            suggestions = self._get_query_suggestions(user_query)
-            return f"I couldn't find any relevant pet food data for your query using both traditional and fuzzy matching techniques. {suggestions}"
-        
-        # Format results for LLM
-        results_summary = self._format_results_for_llm(combined_results)
-        
-        # Create enhanced fuzzy matching context
-        fuzzy_context = ""
-        if identified_elements:
-            fuzzy_context += "\n🧠 QUERY ANALYSIS:\n"
-            fuzzy_context += f"Identified query elements: {identified_elements}\n"
-        
-        if fuzzy_matches:
-            fuzzy_context += "\n🎯 FUZZY MATCHING RESULTS:\n"
-            for column, matches in fuzzy_matches.items():
-                fuzzy_context += f"• {column}: "
-                match_strings = [f"'{match}' (Score: {score})" for match, score in matches[:3]]
-                fuzzy_context += ", ".join(match_strings) + "\n"
-        
-        prompt = f"""
-        You are an expert pet nutritionist and veterinarian with access to advanced search technology. You have analyzed pet food data using both traditional database queries AND intelligent fuzzy matching techniques to provide the most comprehensive recommendations possible.
-        
-        User Question: "{user_query}"
-        
-        🔍 ENHANCED SEARCH METHODOLOGY RESULTS:
-        • Traditional Database Query: {regular_count} products found
-        • Fuzzy Matching Technology: {fuzzy_count} additional products discovered
-        • Total Combined Results: {len(combined_results)} unique products analyzed
-        
-        {fuzzy_context}
-        
-        COMPLETE ENHANCED RESULTS ({len(combined_results)} products):
-        {results_summary}
-        
-        ADVANCED ANALYSIS INSTRUCTIONS:
-        1. 🚀 **Dual Search Benefits**: Explain how traditional querying and fuzzy matching work together
-        2. 🎯 **Precision + Discovery**: Highlight both exact matches and intelligent discoveries  
-        3. 📊 **Comprehensive Analysis**: Use ALL available data fields for thorough recommendations
-        4. 🧠 **Smart Matching Insights**: Explain how fuzzy matching found additional relevant products
-        5. 🏆 **Best Recommendations**: Rank products considering both exact and fuzzy-matched criteria
-        6. 💡 **Expert Insights**: Provide professional veterinary recommendations based on complete dataset
-        
-        ENHANCED RESPONSE FORMAT:
-        "Based on advanced dual-search analysis using both traditional database queries and intelligent fuzzy matching technology ({len(combined_results)} products analyzed):
-        
-        🔍 **SEARCH METHODOLOGY RESULTS**:
-        • Traditional Query: {regular_count} products with direct matches
-        • Fuzzy Matching: {fuzzy_count} additional products discovered through intelligent text analysis
-        • Combined Intelligence: {len(combined_results)} total unique products for comprehensive analysis
-        
-        🏆 **TOP RECOMMENDATIONS** (ranked by relevance and suitability):
-        [Provide detailed analysis of top products using all available data fields]
-        
-        📊 **COMPREHENSIVE NUTRITIONAL ANALYSIS**:
-        [Complete nutritional breakdown using all retrieved nutritional data]
-        
-        🧬 **INGREDIENT & COMPOSITION INSIGHTS**:
-        [Detailed ingredient analysis from complete data fields]
-        
-        🎯 **TARGETING & HEALTH CONSIDERATIONS**:
-        [Analysis using health conditions, life stages, and therapeutic categories]
-        
-        🧠 **FUZZY MATCHING INSIGHTS**:
-        [Explain how intelligent matching discovered additional relevant products]
-        
-        💡 **EXPERT VETERINARY RECOMMENDATIONS**:
-        [Professional advice based on complete enhanced search results]"
-        
-        CRITICAL: Utilize the enhanced search capabilities and ALL available data fields for the most comprehensive analysis possible.
-        
-        Answer:
-        """
-        
-        try:
-            response = self.model.generate_content(prompt)
-            return response.text.strip()
-            
-        except Exception as e:
-            logger.error(f"Error generating enhanced final answer: {e}")
-            # Fallback to original method
-            return self.generate_final_answer(user_query, combined_results)
     
     def _show_help(self) -> str:
         """Show detailed help information"""
         help_text = """
-🆘 ENHANCED PET FOOD QUERY SYSTEM - FUZZY MATCHING HELP GUIDE
+🆘 PET FOOD QUERY SYSTEM - HELP GUIDE
 ═══════════════════════════════════════════════════════════════════
-
-🚀 ENHANCED FEATURES:
-• 🔍 Dual Search Technology: Traditional + Fuzzy Matching
-• 🧠 Intelligent Query Analysis: Identifies query elements automatically  
-• 🎯 Smart Text Matching: Finds variations, synonyms, and similar terms
-• 📊 Combined Results: Merges exact and fuzzy matches for comprehensive coverage
 
 📋 WHAT YOU CAN ASK:
 
@@ -1210,21 +731,12 @@ class PetFoodQuerySystem:
   • 'help'     - Show this help guide
   • 'quit'     - Exit the system
 
-🔍 ENHANCED EXAMPLE QUERIES:
+🔍 EXAMPLE QUERIES:
   You: "high protein dog food"
-  System: [Traditional: exact protein matches + Fuzzy: "high protein", "protein-rich"]
+  System: [Shows products with >25% protein for dogs]
   
-  You: "food for dogs with cancer"
-  System: [Traditional: exact "cancer" + Fuzzy: "oncology", "tumor support", "cancer care"]
-  
-  You: "Hills kidney diet"  
-  System: [Traditional: exact matches + Fuzzy: "Hill's", "renal", "nephrology"]
-
-🧠 FUZZY MATCHING BENEFITS:
-  ✅ Finds misspelled terms: "Hills" → "Hill's Science Diet"
-  ✅ Discovers synonyms: "kidney" → "renal", "nephrology"  
-  ✅ Locates variations: "cancer" → "oncology", "tumor support"
-  ✅ Catches abbreviations: Auto-expands brand names and conditions
+  You: "grain-free cat food for seniors"
+  System: [Shows grain-free products suitable for senior cats]
 
 ═══════════════════════════════════════════════════════════════════
         """
@@ -1385,24 +897,19 @@ def main():
         print("✅ System initialized successfully!")
         
         # Interactive loop
-        print("\n" + "=" * 80)
-        print("🐕🐱 ENHANCED Pet Food Query System with FUZZY MATCHING Ready!")
-        print("Advanced dual-search technology: Traditional queries + Intelligent fuzzy matching")
-        print("=" * 80)
-        print("\n🚀 Enhanced Features:")
-        print("  • 🔍 Dual search methodology (traditional + fuzzy matching)")
-        print("  • 🧠 Intelligent query element identification") 
-        print("  • 🎯 Smart text similarity matching")
-        print("  • 📊 Combined result analysis for comprehensive recommendations")
+        print("\n" + "=" * 70)
+        print("🐕🐱 Enhanced Pet Food Query System Ready!")
+        print("Ask me anything about pet food nutrition and products")
+        print("=" * 70)
         print("\n💡 Example queries:")
-        print("  • 'food for dogs with cancer' - finds cancer, oncology, tumor support")
-        print("  • 'Hills kidney diet' - finds Hill's, renal, nephrology products")
-        print("  • 'grain-free cat food for seniors' - exact + fuzzy matches")
-        print("  • 'chicken food for allergic dogs' - finds allergy support variations")
+        print("  • 'high protein dog food'")
+        print("  • 'grain-free cat food for seniors'")
+        print("  • 'AATU brand products'")
+        print("  • 'wet food with salmon for kittens'")
         print("\n🔧 Commands:")
         print("  • 'help' - Show detailed help")
         print("  • 'quit' - Exit")
-        print("=" * 80)
+        print("=" * 70)
         
         while True:
             user_input = input("\n❓ Your question: ").strip()
@@ -1420,52 +927,21 @@ def main():
                 continue
             
             # Process the query
-            print("⏳ Processing with enhanced dual-search methodology...")
+            print("⏳ Processing your query...")
             result = system.query(user_input)
             
-            # Display enhanced results with fuzzy matching information
-            print("\n🔍 Enhanced Search Results:")
+            # Display results with enhanced formatting
+            print(f"\n📊 SQL Query: {result['sql_query']}")
             
-            # Show search methodology breakdown
-            if result.get('regular_count') is not None:
-                print(f"  • Traditional Query: {result.get('regular_count', 0)} products")
-                print(f"  • Fuzzy Matching: {result.get('fuzzy_count', 0)} additional products")
-                print(f"  • Combined Total: {result.get('result_count', 0)} unique products")
-            else:
-                print(f"  • Results found: {result.get('result_count', 0)} products")
-            
-            # Show identified query elements
-            if result.get('identified_elements'):
-                print("\n🧠 Query Analysis:")
-                for column, terms in result['identified_elements'].items():
-                    print(f"  • {column}: {', '.join(terms)}")
-            
-            # Show fuzzy matching insights
-            if result.get('fuzzy_matches'):
-                print("\n🎯 Fuzzy Matching Results:")
-                for column, matches in result['fuzzy_matches'].items():
-                    print(f"  • {column}: {len(matches)} matches found")
-                    for match, score in matches[:2]:  # Show top 2
-                        print(f"    - '{match}' (Score: {score})")
-            
-            # Show SQL queries
-            if result.get('regular_sql_query'):
-                print(f"\n📊 Regular SQL: {result['regular_sql_query']}")
-            if result.get('fuzzy_sql_query'):
-                print(f"📊 Fuzzy SQL: {result['fuzzy_sql_query']}")
-            
-            # Fallback for old format
-            if result.get('sql_query') and not result.get('regular_sql_query'):
-                print(f"\n📊 SQL Query: {result['sql_query']}")
-            
-            print("\n🎯 Enhanced Answer:")
-            print("-" * 60)
+            print("\n🎯 Answer:")
+            print("-" * 50)
             print(result['answer'])
-            print("-" * 60)
+            print("-" * 50)
             
             # Show performance metrics
             if not result.get('error'):
                 print(f"⏱️  Processing time: {result.get('processing_time', 0):.2f}s")
+                print(f"📊 Results found: {result.get('result_count', 0)} products")
             
             # Show saved file information
             if result.get('saved_file'):
