@@ -73,7 +73,7 @@ class PetFoodQuerySystem:
         
         # Database schema with Full-Text Search (FTS) columns
         self.schema = {
-            "table_name": "pet_food_sql_fts",
+            "table_name": "pet_food_sql_all_fts",
             "columns": [
                 "id", "brand_name_display", "brand_name_english", "brand_name_kana",
                 "empty_col", "product_name", "product_name_english", "product_name_kana",
@@ -248,47 +248,47 @@ class PetFoodQuerySystem:
         ADVANCED PATTERN EXAMPLES WITH FULL-TEXT SEARCH (ALWAYS USE SELECT *):
         
         Animal Type Queries (FTS Enhanced):
-        - "dog food" → SELECT * FROM pet_food_sql_fts WHERE fts_target_animal_species @@ plainto_tsquery('dog') OR target_animal_species ILIKE '%dog%' ORDER BY (CASE WHEN fts_target_animal_species @@ plainto_tsquery('dog') THEN 1 ELSE 2 END), id DESC LIMIT 15
-        - "cat treats" → SELECT * FROM pet_food_sql_fts WHERE (fts_target_animal_species @@ plainto_tsquery('cat') OR target_animal_species ILIKE '%cat%') AND food_genre ILIKE '%treat%' ORDER BY (CASE WHEN fts_target_animal_species @@ plainto_tsquery('cat') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "dog food" → SELECT * FROM pet_food_sql_all_fts WHERE fts_target_animal_species @@ plainto_tsquery('dog') OR target_animal_species ILIKE '%dog%' ORDER BY (CASE WHEN fts_target_animal_species @@ plainto_tsquery('dog') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "cat treats" → SELECT * FROM pet_food_sql_all_fts WHERE (fts_target_animal_species @@ plainto_tsquery('cat') OR target_animal_species ILIKE '%cat%') AND food_genre ILIKE '%treat%' ORDER BY (CASE WHEN fts_target_animal_species @@ plainto_tsquery('cat') THEN 1 ELSE 2 END), id DESC LIMIT 15
         
         Product Name Queries (FTS Primary):
-        - "Science Diet" → SELECT * FROM pet_food_sql_fts WHERE fts_product_name @@ plainto_tsquery('Science Diet') OR product_name ILIKE '%Science Diet%' ORDER BY (CASE WHEN fts_product_name @@ plainto_tsquery('Science Diet') THEN 1 ELSE 2 END), id DESC LIMIT 15
-        - "prescription diet" → SELECT * FROM pet_food_sql_fts WHERE fts_product_name @@ plainto_tsquery('prescription diet') OR fts_variation_name @@ plainto_tsquery('prescription diet') OR product_name ILIKE '%prescription%diet%' ORDER BY (CASE WHEN fts_product_name @@ plainto_tsquery('prescription diet') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "Science Diet" → SELECT * FROM pet_food_sql_all_fts WHERE fts_product_name @@ plainto_tsquery('Science Diet') OR product_name ILIKE '%Science Diet%' ORDER BY (CASE WHEN fts_product_name @@ plainto_tsquery('Science Diet') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "prescription diet" → SELECT * FROM pet_food_sql_all_fts WHERE fts_product_name @@ plainto_tsquery('prescription diet') OR fts_variation_name @@ plainto_tsquery('prescription diet') OR product_name ILIKE '%prescription%diet%' ORDER BY (CASE WHEN fts_product_name @@ plainto_tsquery('prescription diet') THEN 1 ELSE 2 END), id DESC LIMIT 15
         
         Ingredient Queries (FTS Enhanced):
-        - "chicken" → SELECT * FROM pet_food_sql_fts WHERE fts_ingredients @@ plainto_tsquery('chicken') OR fts_type_of_meat @@ plainto_tsquery('chicken') OR ingredients ILIKE '%chicken%' OR type_of_meat ILIKE '%chicken%' ORDER BY (CASE WHEN fts_ingredients @@ plainto_tsquery('chicken') OR fts_type_of_meat @@ plainto_tsquery('chicken') THEN 1 ELSE 2 END), id DESC LIMIT 15
-        - "salmon fish" → SELECT * FROM pet_food_sql_fts WHERE fts_ingredients @@ plainto_tsquery('salmon fish') OR fts_type_of_fish @@ plainto_tsquery('salmon') OR ingredients ILIKE '%salmon%' OR type_of_fish ILIKE '%salmon%' ORDER BY (CASE WHEN fts_ingredients @@ plainto_tsquery('salmon fish') OR fts_type_of_fish @@ plainto_tsquery('salmon') THEN 1 ELSE 2 END), id DESC LIMIT 15
-        - "grain free chicken" → SELECT * FROM pet_food_sql_fts WHERE (fts_ingredients @@ plainto_tsquery('grain free chicken') OR fts_legume_classification @@ plainto_tsquery('grain free') OR (fts_ingredients @@ plainto_tsquery('chicken') AND grain_classification ILIKE '%grain%free%')) OR (ingredients ILIKE '%chicken%' AND grain_classification ILIKE '%none%') ORDER BY (CASE WHEN fts_ingredients @@ plainto_tsquery('grain free chicken') OR fts_legume_classification @@ plainto_tsquery('grain free') THEN 1 ELSE 2 END), id DESC LIMIT 15
-        - "no preservatives" → SELECT * FROM pet_food_sql_fts WHERE fts_additives_preservatives @@ plainto_tsquery('no preservatives') OR additives_preservatives ILIKE '%no%preservative%' OR additives_preservatives ILIKE '%preservative%free%' ORDER BY (CASE WHEN fts_additives_preservatives @@ plainto_tsquery('no preservatives') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "chicken" → SELECT * FROM pet_food_sql_all_fts WHERE fts_ingredients @@ plainto_tsquery('chicken') OR fts_type_of_meat @@ plainto_tsquery('chicken') OR ingredients ILIKE '%chicken%' OR type_of_meat ILIKE '%chicken%' ORDER BY (CASE WHEN fts_ingredients @@ plainto_tsquery('chicken') OR fts_type_of_meat @@ plainto_tsquery('chicken') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "salmon fish" → SELECT * FROM pet_food_sql_all_fts WHERE fts_ingredients @@ plainto_tsquery('salmon fish') OR fts_type_of_fish @@ plainto_tsquery('salmon') OR ingredients ILIKE '%salmon%' OR type_of_fish ILIKE '%salmon%' ORDER BY (CASE WHEN fts_ingredients @@ plainto_tsquery('salmon fish') OR fts_type_of_fish @@ plainto_tsquery('salmon') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "grain free chicken" → SELECT * FROM pet_food_sql_all_fts WHERE (fts_ingredients @@ plainto_tsquery('grain free chicken') OR fts_legume_classification @@ plainto_tsquery('grain free') OR (fts_ingredients @@ plainto_tsquery('chicken') AND grain_classification ILIKE '%grain%free%')) OR (ingredients ILIKE '%chicken%' AND grain_classification ILIKE '%none%') ORDER BY (CASE WHEN fts_ingredients @@ plainto_tsquery('grain free chicken') OR fts_legume_classification @@ plainto_tsquery('grain free') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "no preservatives" → SELECT * FROM pet_food_sql_all_fts WHERE fts_additives_preservatives @@ plainto_tsquery('no preservatives') OR additives_preservatives ILIKE '%no%preservative%' OR additives_preservatives ILIKE '%preservative%free%' ORDER BY (CASE WHEN fts_additives_preservatives @@ plainto_tsquery('no preservatives') THEN 1 ELSE 2 END), id DESC LIMIT 15
         
         Life Stage Queries:
-        - "puppy food" → SELECT * FROM pet_food_sql_fts WHERE life_stage ILIKE '%puppy%' OR life_stage ILIKE '%young%' LIMIT 15
-        - "senior cat" → SELECT * FROM pet_food_sql_fts WHERE (fts_target_animal_species @@ plainto_tsquery('cat') OR target_animal_species ILIKE '%cat%') AND life_stage ILIKE '%senior%' ORDER BY (CASE WHEN fts_target_animal_species @@ plainto_tsquery('cat') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "puppy food" → SELECT * FROM pet_food_sql_all_fts WHERE life_stage ILIKE '%puppy%' OR life_stage ILIKE '%young%' LIMIT 15
+        - "senior cat" → SELECT * FROM pet_food_sql_all_fts WHERE (fts_target_animal_species @@ plainto_tsquery('cat') OR target_animal_species ILIKE '%cat%') AND life_stage ILIKE '%senior%' ORDER BY (CASE WHEN fts_target_animal_species @@ plainto_tsquery('cat') THEN 1 ELSE 2 END), id DESC LIMIT 15
         
         Nutritional Queries (with safe numeric handling):
-        - "high protein" → SELECT * FROM pet_food_sql_fts WHERE (protein_percent ~ E'^[0-9]+\\.?[0-9]*%?$' AND CAST(REPLACE(protein_percent, '%', '') AS FLOAT) > 25) OR protein_percent ILIKE '%high%' LIMIT 15
-        - "low fat" → SELECT * FROM pet_food_sql_fts WHERE (fat_percent ~ E'^[0-9]+\\.?[0-9]*%?$' AND CAST(REPLACE(fat_percent, '%', '') AS FLOAT) < 10) OR fat_percent ILIKE '%low%' LIMIT 15
-        - "more than 30% protein" → SELECT * FROM pet_food_sql_fts WHERE protein_percent ~ E'^[0-9]+\\.?[0-9]*%?$' AND CAST(REPLACE(protein_percent, '%', '') AS FLOAT) > 30 LIMIT 15
+        - "high protein" → SELECT * FROM pet_food_sql_all_fts WHERE (protein_percent ~ E'^[0-9]+\\.?[0-9]*%?$' AND CAST(REPLACE(protein_percent, '%', '') AS FLOAT) > 25) OR protein_percent ILIKE '%high%' LIMIT 15
+        - "low fat" → SELECT * FROM pet_food_sql_all_fts WHERE (fat_percent ~ E'^[0-9]+\\.?[0-9]*%?$' AND CAST(REPLACE(fat_percent, '%', '') AS FLOAT) < 10) OR fat_percent ILIKE '%low%' LIMIT 15
+        - "more than 30% protein" → SELECT * FROM pet_food_sql_all_fts WHERE protein_percent ~ E'^[0-9]+\\.?[0-9]*%?$' AND CAST(REPLACE(protein_percent, '%', '') AS FLOAT) > 30 LIMIT 15
         
         Brand Queries:
-        - "AATU" → SELECT * FROM pet_food_sql_fts WHERE brand_name_english ILIKE '%AATU%' OR brand_name_display ILIKE '%AATU%' LIMIT 15
+        - "AATU" → SELECT * FROM pet_food_sql_all_fts WHERE brand_name_english ILIKE '%AATU%' OR brand_name_display ILIKE '%AATU%' LIMIT 15
         
         Food Type Queries:
-        - "dry food" → SELECT * FROM pet_food_sql_fts WHERE food_type ILIKE '%dry%' LIMIT 15
-        - "wet food" → SELECT * FROM pet_food_sql_fts WHERE food_type ILIKE '%wet%' OR food_type ILIKE '%can%' LIMIT 15
+        - "dry food" → SELECT * FROM pet_food_sql_all_fts WHERE food_type ILIKE '%dry%' LIMIT 15
+        - "wet food" → SELECT * FROM pet_food_sql_all_fts WHERE food_type ILIKE '%wet%' OR food_type ILIKE '%can%' LIMIT 15
         
         Health Condition Queries (FTS Enhanced):
-        - "kidney disease food" → SELECT * FROM pet_food_sql_fts WHERE fts_specific_physical_condition @@ plainto_tsquery('kidney disease') OR fts_therapeutic_food_category @@ plainto_tsquery('kidney renal') OR specific_physical_condition ILIKE '%kidney%' OR therapeutic_food_category ILIKE '%renal%' ORDER BY (CASE WHEN fts_specific_physical_condition @@ plainto_tsquery('kidney disease') OR fts_therapeutic_food_category @@ plainto_tsquery('kidney renal') THEN 1 ELSE 2 END), id DESC LIMIT 15
-        - "food for diabetic cats" → SELECT * FROM pet_food_sql_fts WHERE (fts_target_animal_species @@ plainto_tsquery('cat') OR target_animal_species ILIKE '%cat%') AND (fts_specific_physical_condition @@ plainto_tsquery('diabetes diabetic') OR fts_therapeutic_food_category @@ plainto_tsquery('diabetes') OR specific_physical_condition ILIKE '%diabetes%') ORDER BY (CASE WHEN fts_specific_physical_condition @@ plainto_tsquery('diabetes diabetic') THEN 1 ELSE 2 END), id DESC LIMIT 15
-        - "weight management dog food" → SELECT * FROM pet_food_sql_fts WHERE (fts_target_animal_species @@ plainto_tsquery('dog') OR target_animal_species ILIKE '%dog%') AND (fts_specific_physical_condition @@ plainto_tsquery('weight management obesity') OR fts_therapeutic_food_category @@ plainto_tsquery('weight management') OR fts_classification_by_activity_level @@ plainto_tsquery('weight management')) ORDER BY (CASE WHEN fts_specific_physical_condition @@ plainto_tsquery('weight management obesity') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "kidney disease food" → SELECT * FROM pet_food_sql_all_fts WHERE fts_specific_physical_condition @@ plainto_tsquery('kidney disease') OR fts_therapeutic_food_category @@ plainto_tsquery('kidney renal') OR specific_physical_condition ILIKE '%kidney%' OR therapeutic_food_category ILIKE '%renal%' ORDER BY (CASE WHEN fts_specific_physical_condition @@ plainto_tsquery('kidney disease') OR fts_therapeutic_food_category @@ plainto_tsquery('kidney renal') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "food for diabetic cats" → SELECT * FROM pet_food_sql_all_fts WHERE (fts_target_animal_species @@ plainto_tsquery('cat') OR target_animal_species ILIKE '%cat%') AND (fts_specific_physical_condition @@ plainto_tsquery('diabetes diabetic') OR fts_therapeutic_food_category @@ plainto_tsquery('diabetes') OR specific_physical_condition ILIKE '%diabetes%') ORDER BY (CASE WHEN fts_specific_physical_condition @@ plainto_tsquery('diabetes diabetic') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "weight management dog food" → SELECT * FROM pet_food_sql_all_fts WHERE (fts_target_animal_species @@ plainto_tsquery('dog') OR target_animal_species ILIKE '%dog%') AND (fts_specific_physical_condition @@ plainto_tsquery('weight management obesity') OR fts_therapeutic_food_category @@ plainto_tsquery('weight management') OR fts_classification_by_activity_level @@ plainto_tsquery('weight management')) ORDER BY (CASE WHEN fts_specific_physical_condition @@ plainto_tsquery('weight management obesity') THEN 1 ELSE 2 END), id DESC LIMIT 15
         
         Activity Level Queries (FTS Enhanced):
-        - "active dog food" → SELECT * FROM pet_food_sql_fts WHERE (fts_target_animal_species @@ plainto_tsquery('dog') OR target_animal_species ILIKE '%dog%') AND (fts_classification_by_activity_level @@ plainto_tsquery('active high energy') OR classification_by_activity_level ILIKE '%active%' OR classification_by_activity_level ILIKE '%high%energy%') ORDER BY (CASE WHEN fts_classification_by_activity_level @@ plainto_tsquery('active high energy') THEN 1 ELSE 2 END), id DESC LIMIT 15
-        - "low activity senior cat" → SELECT * FROM pet_food_sql_fts WHERE (fts_target_animal_species @@ plainto_tsquery('cat') OR target_animal_species ILIKE '%cat%') AND life_stage ILIKE '%senior%' AND (fts_classification_by_activity_level @@ plainto_tsquery('low activity sedentary') OR classification_by_activity_level ILIKE '%low%activity%') ORDER BY (CASE WHEN fts_classification_by_activity_level @@ plainto_tsquery('low activity sedentary') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "active dog food" → SELECT * FROM pet_food_sql_all_fts WHERE (fts_target_animal_species @@ plainto_tsquery('dog') OR target_animal_species ILIKE '%dog%') AND (fts_classification_by_activity_level @@ plainto_tsquery('active high energy') OR classification_by_activity_level ILIKE '%active%' OR classification_by_activity_level ILIKE '%high%energy%') ORDER BY (CASE WHEN fts_classification_by_activity_level @@ plainto_tsquery('active high energy') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "low activity senior cat" → SELECT * FROM pet_food_sql_all_fts WHERE (fts_target_animal_species @@ plainto_tsquery('cat') OR target_animal_species ILIKE '%cat%') AND life_stage ILIKE '%senior%' AND (fts_classification_by_activity_level @@ plainto_tsquery('low activity sedentary') OR classification_by_activity_level ILIKE '%low%activity%') ORDER BY (CASE WHEN fts_classification_by_activity_level @@ plainto_tsquery('low activity sedentary') THEN 1 ELSE 2 END), id DESC LIMIT 15
         
         Combined FTS Queries:
-        - "high protein dog dry food" → SELECT * FROM pet_food_sql_fts WHERE (fts_target_animal_species @@ plainto_tsquery('dog') OR target_animal_species ILIKE '%dog%') AND food_type ILIKE '%dry%' AND ((protein_percent ~ E'^[0-9]+\\.?[0-9]*%?$' AND CAST(REPLACE(protein_percent, '%', '') AS FLOAT) > 25) OR protein_percent ILIKE '%high%') ORDER BY (CASE WHEN fts_target_animal_species @@ plainto_tsquery('dog') THEN 1 ELSE 2 END), id DESC LIMIT 15
-        - "Royal Canin digestive care cat" → SELECT * FROM pet_food_sql_fts WHERE brand_name_english ILIKE '%Royal%Canin%' AND (fts_target_animal_species @@ plainto_tsquery('cat') OR target_animal_species ILIKE '%cat%') AND (fts_product_name @@ plainto_tsquery('digestive care') OR fts_therapeutic_food_category @@ plainto_tsquery('digestive gastrointestinal') OR product_name ILIKE '%digestive%care%') ORDER BY (CASE WHEN fts_product_name @@ plainto_tsquery('digestive care') AND fts_target_animal_species @@ plainto_tsquery('cat') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "high protein dog dry food" → SELECT * FROM pet_food_sql_all_fts WHERE (fts_target_animal_species @@ plainto_tsquery('dog') OR target_animal_species ILIKE '%dog%') AND food_type ILIKE '%dry%' AND ((protein_percent ~ E'^[0-9]+\\.?[0-9]*%?$' AND CAST(REPLACE(protein_percent, '%', '') AS FLOAT) > 25) OR protein_percent ILIKE '%high%') ORDER BY (CASE WHEN fts_target_animal_species @@ plainto_tsquery('dog') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "Royal Canin digestive care cat" → SELECT * FROM pet_food_sql_all_fts WHERE brand_name_english ILIKE '%Royal%Canin%' AND (fts_target_animal_species @@ plainto_tsquery('cat') OR target_animal_species ILIKE '%cat%') AND (fts_product_name @@ plainto_tsquery('digestive care') OR fts_therapeutic_food_category @@ plainto_tsquery('digestive gastrointestinal') OR product_name ILIKE '%digestive%care%') ORDER BY (CASE WHEN fts_product_name @@ plainto_tsquery('digestive care') AND fts_target_animal_species @@ plainto_tsquery('cat') THEN 1 ELSE 2 END), id DESC LIMIT 15
         
         CRITICAL NUMERIC HANDLING:
         - Use REPLACE(column, '%', '') to remove % signs before CAST
@@ -315,7 +315,7 @@ class PetFoodQuerySystem:
         - For other columns (brands, nutritional info, etc.) → use regular ILIKE searches
         
         MANDATORY FORMAT:
-        Your response must ALWAYS start with "SELECT * FROM pet_food_sql_fts WHERE..." and end with "LIMIT 15"
+        Your response must ALWAYS start with "SELECT * FROM pet_food_sql_all_fts WHERE..." and end with "LIMIT 15"
         NEVER use specific column names in SELECT clause - ALWAYS use SELECT *
         For FTS queries, include ORDER BY clause for relevance ranking
         
