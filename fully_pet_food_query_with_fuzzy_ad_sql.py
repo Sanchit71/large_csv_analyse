@@ -2,13 +2,19 @@
 """
 Pet Food Query System with Full-Text Search (FTS) Enhancement
 
-This system now includes Full-Text Search capabilities on 6 key columns:
+This system now includes Full-Text Search capabilities on 12 key columns:
 - fts_product_name (maps to product_name)
 - fts_variation_name (maps to variation_name)  
 - fts_variation_name_final (maps to variation_name_final)
 - fts_target_animal_species (maps to target_animal_species)
 - fts_ingredients (maps to ingredients)
 - fts_type_of_meat (maps to type_of_meat)
+- fts_specific_physical_condition (maps to specific_physical_condition)
+- fts_therapeutic_food_category (maps to therapeutic_food_category)
+- fts_classification_by_activity_level (maps to classification_by_activity_level)
+- fts_legume_classification (maps to legume_classification)
+- fts_type_of_fish (maps to type_of_fish)
+- fts_additives_preservatives (maps to additives_preservatives)
 
 FTS provides better text matching and relevance ranking using PostgreSQL's
 plainto_tsquery() function combined with traditional ILIKE for comprehensive coverage.
@@ -83,7 +89,10 @@ class PetFoodQuerySystem:
                 "protein_percent", "fat_percent", "carbohydrates_percent",
                 # Full-Text Search columns
                 "fts_product_name", "fts_variation_name", "fts_variation_name_final", 
-                "fts_target_animal_species", "fts_ingredients", "fts_type_of_meat"
+                "fts_target_animal_species", "fts_ingredients", "fts_type_of_meat",
+                "fts_specific_physical_condition", "fts_therapeutic_food_category", 
+                "fts_classification_by_activity_level", "fts_legume_classification",
+                "fts_type_of_fish", "fts_additives_preservatives"
             ],
             # FTS column mapping for reference
             "fts_columns": {
@@ -92,7 +101,13 @@ class PetFoodQuerySystem:
                 "fts_variation_name_final": "variation_name_final",
                 "fts_target_animal_species": "target_animal_species",
                 "fts_ingredients": "ingredients",
-                "fts_type_of_meat": "type_of_meat"
+                "fts_type_of_meat": "type_of_meat",
+                "fts_specific_physical_condition": "specific_physical_condition",
+                "fts_therapeutic_food_category": "therapeutic_food_category",
+                "fts_classification_by_activity_level": "classification_by_activity_level",
+                "fts_legume_classification": "legume_classification",
+                "fts_type_of_fish": "type_of_fish",
+                "fts_additives_preservatives": "additives_preservatives"
             }
         }
         
@@ -192,6 +207,12 @@ class PetFoodQuerySystem:
         - fts_target_animal_species: Full-text search on animal species (use @@ plainto_tsquery())
         - fts_ingredients: Full-text search on ingredients (use @@ plainto_tsquery())
         - fts_type_of_meat: Full-text search on meat types (use @@ plainto_tsquery())
+        - fts_specific_physical_condition: Full-text search on health conditions (use @@ plainto_tsquery())
+        - fts_therapeutic_food_category: Full-text search on therapeutic categories (use @@ plainto_tsquery())
+        - fts_classification_by_activity_level: Full-text search on activity levels (use @@ plainto_tsquery())
+        - fts_legume_classification: Full-text search on legume content (use @@ plainto_tsquery())
+        - fts_type_of_fish: Full-text search on fish types (use @@ plainto_tsquery())
+        - fts_additives_preservatives: Full-text search on additives/preservatives (use @@ plainto_tsquery())
         
         CRITICAL NOTES:
         - ALL columns except 'id' are stored as TEXT
@@ -236,8 +257,9 @@ class PetFoodQuerySystem:
         
         Ingredient Queries (FTS Enhanced):
         - "chicken" → SELECT * FROM pet_food_sql_fts WHERE fts_ingredients @@ plainto_tsquery('chicken') OR fts_type_of_meat @@ plainto_tsquery('chicken') OR ingredients ILIKE '%chicken%' OR type_of_meat ILIKE '%chicken%' ORDER BY (CASE WHEN fts_ingredients @@ plainto_tsquery('chicken') OR fts_type_of_meat @@ plainto_tsquery('chicken') THEN 1 ELSE 2 END), id DESC LIMIT 15
-        - "salmon fish" → SELECT * FROM pet_food_sql_fts WHERE fts_ingredients @@ plainto_tsquery('salmon fish') OR fts_type_of_meat @@ plainto_tsquery('salmon') OR ingredients ILIKE '%salmon%' OR type_of_fish ILIKE '%salmon%' ORDER BY (CASE WHEN fts_ingredients @@ plainto_tsquery('salmon fish') THEN 1 ELSE 2 END), id DESC LIMIT 15
-        - "grain free chicken" → SELECT * FROM pet_food_sql_fts WHERE (fts_ingredients @@ plainto_tsquery('grain free chicken') OR (fts_ingredients @@ plainto_tsquery('chicken') AND grain_classification ILIKE '%grain%free%')) OR (ingredients ILIKE '%chicken%' AND grain_classification ILIKE '%none%') ORDER BY (CASE WHEN fts_ingredients @@ plainto_tsquery('grain free chicken') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "salmon fish" → SELECT * FROM pet_food_sql_fts WHERE fts_ingredients @@ plainto_tsquery('salmon fish') OR fts_type_of_fish @@ plainto_tsquery('salmon') OR ingredients ILIKE '%salmon%' OR type_of_fish ILIKE '%salmon%' ORDER BY (CASE WHEN fts_ingredients @@ plainto_tsquery('salmon fish') OR fts_type_of_fish @@ plainto_tsquery('salmon') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "grain free chicken" → SELECT * FROM pet_food_sql_fts WHERE (fts_ingredients @@ plainto_tsquery('grain free chicken') OR fts_legume_classification @@ plainto_tsquery('grain free') OR (fts_ingredients @@ plainto_tsquery('chicken') AND grain_classification ILIKE '%grain%free%')) OR (ingredients ILIKE '%chicken%' AND grain_classification ILIKE '%none%') ORDER BY (CASE WHEN fts_ingredients @@ plainto_tsquery('grain free chicken') OR fts_legume_classification @@ plainto_tsquery('grain free') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "no preservatives" → SELECT * FROM pet_food_sql_fts WHERE fts_additives_preservatives @@ plainto_tsquery('no preservatives') OR additives_preservatives ILIKE '%no%preservative%' OR additives_preservatives ILIKE '%preservative%free%' ORDER BY (CASE WHEN fts_additives_preservatives @@ plainto_tsquery('no preservatives') THEN 1 ELSE 2 END), id DESC LIMIT 15
         
         Life Stage Queries:
         - "puppy food" → SELECT * FROM pet_food_sql_fts WHERE life_stage ILIKE '%puppy%' OR life_stage ILIKE '%young%' LIMIT 15
@@ -255,9 +277,18 @@ class PetFoodQuerySystem:
         - "dry food" → SELECT * FROM pet_food_sql_fts WHERE food_type ILIKE '%dry%' LIMIT 15
         - "wet food" → SELECT * FROM pet_food_sql_fts WHERE food_type ILIKE '%wet%' OR food_type ILIKE '%can%' LIMIT 15
         
+        Health Condition Queries (FTS Enhanced):
+        - "kidney disease food" → SELECT * FROM pet_food_sql_fts WHERE fts_specific_physical_condition @@ plainto_tsquery('kidney disease') OR fts_therapeutic_food_category @@ plainto_tsquery('kidney renal') OR specific_physical_condition ILIKE '%kidney%' OR therapeutic_food_category ILIKE '%renal%' ORDER BY (CASE WHEN fts_specific_physical_condition @@ plainto_tsquery('kidney disease') OR fts_therapeutic_food_category @@ plainto_tsquery('kidney renal') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "food for diabetic cats" → SELECT * FROM pet_food_sql_fts WHERE (fts_target_animal_species @@ plainto_tsquery('cat') OR target_animal_species ILIKE '%cat%') AND (fts_specific_physical_condition @@ plainto_tsquery('diabetes diabetic') OR fts_therapeutic_food_category @@ plainto_tsquery('diabetes') OR specific_physical_condition ILIKE '%diabetes%') ORDER BY (CASE WHEN fts_specific_physical_condition @@ plainto_tsquery('diabetes diabetic') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "weight management dog food" → SELECT * FROM pet_food_sql_fts WHERE (fts_target_animal_species @@ plainto_tsquery('dog') OR target_animal_species ILIKE '%dog%') AND (fts_specific_physical_condition @@ plainto_tsquery('weight management obesity') OR fts_therapeutic_food_category @@ plainto_tsquery('weight management') OR fts_classification_by_activity_level @@ plainto_tsquery('weight management')) ORDER BY (CASE WHEN fts_specific_physical_condition @@ plainto_tsquery('weight management obesity') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        
+        Activity Level Queries (FTS Enhanced):
+        - "active dog food" → SELECT * FROM pet_food_sql_fts WHERE (fts_target_animal_species @@ plainto_tsquery('dog') OR target_animal_species ILIKE '%dog%') AND (fts_classification_by_activity_level @@ plainto_tsquery('active high energy') OR classification_by_activity_level ILIKE '%active%' OR classification_by_activity_level ILIKE '%high%energy%') ORDER BY (CASE WHEN fts_classification_by_activity_level @@ plainto_tsquery('active high energy') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "low activity senior cat" → SELECT * FROM pet_food_sql_fts WHERE (fts_target_animal_species @@ plainto_tsquery('cat') OR target_animal_species ILIKE '%cat%') AND life_stage ILIKE '%senior%' AND (fts_classification_by_activity_level @@ plainto_tsquery('low activity sedentary') OR classification_by_activity_level ILIKE '%low%activity%') ORDER BY (CASE WHEN fts_classification_by_activity_level @@ plainto_tsquery('low activity sedentary') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        
         Combined FTS Queries:
         - "high protein dog dry food" → SELECT * FROM pet_food_sql_fts WHERE (fts_target_animal_species @@ plainto_tsquery('dog') OR target_animal_species ILIKE '%dog%') AND food_type ILIKE '%dry%' AND ((protein_percent ~ E'^[0-9]+\\.?[0-9]*%?$' AND CAST(REPLACE(protein_percent, '%', '') AS FLOAT) > 25) OR protein_percent ILIKE '%high%') ORDER BY (CASE WHEN fts_target_animal_species @@ plainto_tsquery('dog') THEN 1 ELSE 2 END), id DESC LIMIT 15
-        - "Royal Canin digestive care cat" → SELECT * FROM pet_food_sql_fts WHERE brand_name_english ILIKE '%Royal%Canin%' AND (fts_target_animal_species @@ plainto_tsquery('cat') OR target_animal_species ILIKE '%cat%') AND (fts_product_name @@ plainto_tsquery('digestive care') OR product_name ILIKE '%digestive%care%') ORDER BY (CASE WHEN fts_product_name @@ plainto_tsquery('digestive care') AND fts_target_animal_species @@ plainto_tsquery('cat') THEN 1 ELSE 2 END), id DESC LIMIT 15
+        - "Royal Canin digestive care cat" → SELECT * FROM pet_food_sql_fts WHERE brand_name_english ILIKE '%Royal%Canin%' AND (fts_target_animal_species @@ plainto_tsquery('cat') OR target_animal_species ILIKE '%cat%') AND (fts_product_name @@ plainto_tsquery('digestive care') OR fts_therapeutic_food_category @@ plainto_tsquery('digestive gastrointestinal') OR product_name ILIKE '%digestive%care%') ORDER BY (CASE WHEN fts_product_name @@ plainto_tsquery('digestive care') AND fts_target_animal_species @@ plainto_tsquery('cat') THEN 1 ELSE 2 END), id DESC LIMIT 15
         
         CRITICAL NUMERIC HANDLING:
         - Use REPLACE(column, '%', '') to remove % signs before CAST
@@ -274,8 +305,13 @@ class PetFoodQuerySystem:
         
         FTS COLUMN MAPPING:
         - Product names → use fts_product_name, fts_variation_name, fts_variation_name_final
-        - Ingredients → use fts_ingredients and fts_type_of_meat
+        - Ingredients → use fts_ingredients, fts_type_of_meat, fts_type_of_fish
         - Animal types → use fts_target_animal_species
+        - Health conditions → use fts_specific_physical_condition
+        - Therapeutic purposes → use fts_therapeutic_food_category
+        - Activity levels → use fts_classification_by_activity_level
+        - Legume content → use fts_legume_classification
+        - Additives/preservatives → use fts_additives_preservatives
         - For other columns (brands, nutritional info, etc.) → use regular ILIKE searches
         
         MANDATORY FORMAT:
@@ -327,15 +363,27 @@ class PetFoodQuerySystem:
         elif any(word in query_lower for word in ['chicken']):
             return f"SELECT * FROM {table_name} WHERE fts_ingredients @@ plainto_tsquery('chicken') OR fts_type_of_meat @@ plainto_tsquery('chicken') OR ingredients ILIKE '%chicken%' OR type_of_meat ILIKE '%chicken%' ORDER BY (CASE WHEN fts_ingredients @@ plainto_tsquery('chicken') OR fts_type_of_meat @@ plainto_tsquery('chicken') THEN 1 ELSE 2 END), id DESC LIMIT 15"
         elif any(word in query_lower for word in ['salmon', 'fish']):
-            return f"SELECT * FROM {table_name} WHERE fts_ingredients @@ plainto_tsquery('salmon') OR fts_type_of_meat @@ plainto_tsquery('salmon') OR ingredients ILIKE '%salmon%' OR type_of_fish ILIKE '%salmon%' ORDER BY (CASE WHEN fts_ingredients @@ plainto_tsquery('salmon') THEN 1 ELSE 2 END), id DESC LIMIT 15"
+            return f"SELECT * FROM {table_name} WHERE fts_ingredients @@ plainto_tsquery('salmon') OR fts_type_of_fish @@ plainto_tsquery('salmon') OR ingredients ILIKE '%salmon%' OR type_of_fish ILIKE '%salmon%' ORDER BY (CASE WHEN fts_ingredients @@ plainto_tsquery('salmon') OR fts_type_of_fish @@ plainto_tsquery('salmon') THEN 1 ELSE 2 END), id DESC LIMIT 15"
         elif any(word in query_lower for word in ['protein', 'high protein']):
             return f"SELECT * FROM {table_name} WHERE protein_percent ILIKE '%high%' OR ingredients ILIKE '%protein%' LIMIT 15"
+        elif any(word in query_lower for word in ['kidney', 'renal', 'nephrology']):
+            return f"SELECT * FROM {table_name} WHERE fts_specific_physical_condition @@ plainto_tsquery('kidney renal') OR fts_therapeutic_food_category @@ plainto_tsquery('kidney renal') OR specific_physical_condition ILIKE '%kidney%' OR therapeutic_food_category ILIKE '%renal%' ORDER BY (CASE WHEN fts_specific_physical_condition @@ plainto_tsquery('kidney renal') OR fts_therapeutic_food_category @@ plainto_tsquery('kidney renal') THEN 1 ELSE 2 END), id DESC LIMIT 15"
+        elif any(word in query_lower for word in ['diabetes', 'diabetic', 'blood sugar']):
+            return f"SELECT * FROM {table_name} WHERE fts_specific_physical_condition @@ plainto_tsquery('diabetes diabetic') OR fts_therapeutic_food_category @@ plainto_tsquery('diabetes') OR specific_physical_condition ILIKE '%diabetes%' OR therapeutic_food_category ILIKE '%diabetes%' ORDER BY (CASE WHEN fts_specific_physical_condition @@ plainto_tsquery('diabetes diabetic') THEN 1 ELSE 2 END), id DESC LIMIT 15"
+        elif any(word in query_lower for word in ['weight', 'obesity', 'weight management', 'overweight']):
+            return f"SELECT * FROM {table_name} WHERE fts_specific_physical_condition @@ plainto_tsquery('weight management obesity') OR fts_therapeutic_food_category @@ plainto_tsquery('weight management') OR fts_classification_by_activity_level @@ plainto_tsquery('weight management') OR specific_physical_condition ILIKE '%weight%' OR therapeutic_food_category ILIKE '%weight%' ORDER BY (CASE WHEN fts_specific_physical_condition @@ plainto_tsquery('weight management obesity') THEN 1 ELSE 2 END), id DESC LIMIT 15"
+        elif any(word in query_lower for word in ['active', 'high energy', 'working dog', 'athletic']):
+            return f"SELECT * FROM {table_name} WHERE fts_classification_by_activity_level @@ plainto_tsquery('active high energy') OR classification_by_activity_level ILIKE '%active%' OR classification_by_activity_level ILIKE '%high%energy%' ORDER BY (CASE WHEN fts_classification_by_activity_level @@ plainto_tsquery('active high energy') THEN 1 ELSE 2 END), id DESC LIMIT 15"
+        elif any(word in query_lower for word in ['grain free', 'no grain', 'legume', 'pea free']):
+            return f"SELECT * FROM {table_name} WHERE fts_legume_classification @@ plainto_tsquery('grain free legume') OR grain_classification ILIKE '%grain%free%' OR legume_classification ILIKE '%pea%free%' ORDER BY (CASE WHEN fts_legume_classification @@ plainto_tsquery('grain free legume') THEN 1 ELSE 2 END), id DESC LIMIT 15"
+        elif any(word in query_lower for word in ['preservative', 'natural', 'no additives', 'chemical free']):
+            return f"SELECT * FROM {table_name} WHERE fts_additives_preservatives @@ plainto_tsquery('preservative free natural') OR additives_preservatives ILIKE '%natural%' OR additives_preservatives ILIKE '%preservative%free%' ORDER BY (CASE WHEN fts_additives_preservatives @@ plainto_tsquery('preservative free natural') THEN 1 ELSE 2 END), id DESC LIMIT 15"
         elif any(word in query_lower for word in ['prescription', 'diet', 'science']):
             return f"SELECT * FROM {table_name} WHERE fts_product_name @@ plainto_tsquery('{user_query}') OR fts_variation_name @@ plainto_tsquery('{user_query}') OR product_name ILIKE '%{user_query}%' ORDER BY (CASE WHEN fts_product_name @@ plainto_tsquery('{user_query}') THEN 1 ELSE 2 END), id DESC LIMIT 15"
         else:
             # General search across all FTS columns
             search_term = user_query.replace("'", "''")  # Escape single quotes
-            return f"SELECT * FROM {table_name} WHERE fts_product_name @@ plainto_tsquery('{search_term}') OR fts_variation_name @@ plainto_tsquery('{search_term}') OR fts_ingredients @@ plainto_tsquery('{search_term}') OR fts_target_animal_species @@ plainto_tsquery('{search_term}') ORDER BY (CASE WHEN fts_product_name @@ plainto_tsquery('{search_term}') THEN 1 WHEN fts_variation_name @@ plainto_tsquery('{search_term}') THEN 2 ELSE 3 END), id DESC LIMIT 15"
+            return f"SELECT * FROM {table_name} WHERE fts_product_name @@ plainto_tsquery('{search_term}') OR fts_variation_name @@ plainto_tsquery('{search_term}') OR fts_ingredients @@ plainto_tsquery('{search_term}') OR fts_target_animal_species @@ plainto_tsquery('{search_term}') OR fts_specific_physical_condition @@ plainto_tsquery('{search_term}') OR fts_therapeutic_food_category @@ plainto_tsquery('{search_term}') OR fts_classification_by_activity_level @@ plainto_tsquery('{search_term}') OR fts_legume_classification @@ plainto_tsquery('{search_term}') OR fts_type_of_fish @@ plainto_tsquery('{search_term}') OR fts_additives_preservatives @@ plainto_tsquery('{search_term}') ORDER BY (CASE WHEN fts_product_name @@ plainto_tsquery('{search_term}') THEN 1 WHEN fts_variation_name @@ plainto_tsquery('{search_term}') THEN 2 WHEN fts_specific_physical_condition @@ plainto_tsquery('{search_term}') OR fts_therapeutic_food_category @@ plainto_tsquery('{search_term}') THEN 3 ELSE 4 END), id DESC LIMIT 15"
     
     def execute_query(self, sql_query: str) -> Optional[pd.DataFrame]:
         """
@@ -798,6 +846,7 @@ class PetFoodQuerySystem:
             "product_name_english": "Product names in English",
             "specific_physical_condition": "Health conditions and medical issues",
             "therapeutic_food_category": "Medical/therapeutic purposes",
+            "classification_by_activity_level": "Activity level classification (active, sedentary, etc.)",
             "life_stage": "Age groups (puppy, adult, senior, etc.)",
             "food_type": "Type of food (dry, wet, treats, etc.)",
             "food_genre": "Food genre/category",
@@ -805,10 +854,24 @@ class PetFoodQuerySystem:
             "type_of_meat": "Type of meat used",
             "type_of_fish": "Type of fish used", 
             "grain_classification": "Grain content classification",
-            "legume_classification": "Legume content",
+            "legume_classification": "Legume content classification",
+            "additives_preservatives": "Additives and preservatives information",
             "protein_percent": "Protein percentage",
             "fat_percent": "Fat percentage",
-            "carbohydrates_percent": "Carbohydrate percentage"
+            "carbohydrates_percent": "Carbohydrate percentage",
+            # FTS column descriptions
+            "fts_product_name": "Full-text search on product names",
+            "fts_variation_name": "Full-text search on variation names",
+            "fts_variation_name_final": "Full-text search on final variation names",
+            "fts_target_animal_species": "Full-text search on animal species",
+            "fts_ingredients": "Full-text search on ingredients",
+            "fts_type_of_meat": "Full-text search on meat types",
+            "fts_specific_physical_condition": "Full-text search on health conditions",
+            "fts_therapeutic_food_category": "Full-text search on therapeutic categories",
+            "fts_classification_by_activity_level": "Full-text search on activity levels",
+            "fts_legume_classification": "Full-text search on legume content",
+            "fts_type_of_fish": "Full-text search on fish types",
+            "fts_additives_preservatives": "Full-text search on additives/preservatives"
         }
         return descriptions.get(column, f"Database column: {column}")
     
@@ -837,8 +900,40 @@ class PetFoodQuerySystem:
         
         if any(word in query_lower for word in ['cancer', 'tumor', 'oncology']):
             extracted["specific_physical_condition"] = ["cancer", "tumor", "oncology"]
-        elif any(word in query_lower for word in ['kidney', 'renal']):
-            extracted["specific_physical_condition"] = ["kidney", "renal"]
+        elif any(word in query_lower for word in ['kidney', 'renal', 'nephrology']):
+            extracted["specific_physical_condition"] = ["kidney", "renal", "nephrology"]
+        elif any(word in query_lower for word in ['diabetes', 'diabetic', 'blood sugar']):
+            extracted["specific_physical_condition"] = ["diabetes", "diabetic"]
+        elif any(word in query_lower for word in ['weight', 'obesity', 'overweight']):
+            extracted["specific_physical_condition"] = ["weight management", "obesity", "overweight"]
+        elif any(word in query_lower for word in ['arthritis', 'joint', 'mobility']):
+            extracted["specific_physical_condition"] = ["arthritis", "joint care", "mobility"]
+        
+        # Therapeutic food category extraction
+        if any(word in query_lower for word in ['prescription', 'therapeutic', 'medical']):
+            extracted["therapeutic_food_category"] = ["prescription", "therapeutic", "medical"]
+        elif any(word in query_lower for word in ['digestive', 'gastrointestinal', 'gi']):
+            extracted["therapeutic_food_category"] = ["digestive", "gastrointestinal"]
+        elif any(word in query_lower for word in ['urinary', 'bladder', 'urologic']):
+            extracted["therapeutic_food_category"] = ["urinary", "urologic"]
+        
+        # Activity level extraction
+        if any(word in query_lower for word in ['active', 'high energy', 'working', 'athletic']):
+            extracted["classification_by_activity_level"] = ["active", "high energy", "working"]
+        elif any(word in query_lower for word in ['low activity', 'sedentary', 'indoor']):
+            extracted["classification_by_activity_level"] = ["low activity", "sedentary", "indoor"]
+        
+        # Legume classification extraction
+        if any(word in query_lower for word in ['grain free', 'no grain', 'pea free', 'legume free']):
+            extracted["legume_classification"] = ["grain free", "pea free", "legume free"]
+        elif any(word in query_lower for word in ['pea', 'lentil', 'chickpea']):
+            extracted["legume_classification"] = ["pea", "lentil", "chickpea"]
+        
+        # Additives/preservatives extraction
+        if any(word in query_lower for word in ['natural', 'no preservatives', 'preservative free']):
+            extracted["additives_preservatives"] = ["natural", "preservative free"]
+        elif any(word in query_lower for word in ['artificial', 'preservatives', 'chemicals']):
+            extracted["additives_preservatives"] = ["artificial", "preservatives"]
         
         # Brand extraction
         brands = ['hills', 'royal canin', 'aatu', 'purina', 'wellness']
@@ -1243,6 +1338,7 @@ class PetFoodQuerySystem:
   • "chicken dog food"       • "salmon cat food"
   • "grain-free products"    • "beef ingredients"
   • "no chicken meal"        • "fish-based nutrition"
+  • "pea free food"          • "no preservatives"
 
 📊 Nutritional Queries:
   • "high protein food"      • "low fat dog food"
@@ -1257,6 +1353,15 @@ class PetFoodQuerySystem:
   • "dry food"               • "wet food / canned food"
   • "treats"                 • "prescription diet"
   • "therapeutic food"       • "complete nutrition"
+
+🏥 Health Condition Queries:
+  • "kidney disease food"    • "diabetic cat food"
+  • "weight management"      • "digestive care"
+  • "urinary health"         • "joint support"
+
+🏃 Activity Level Queries:
+  • "active dog food"        • "working dog nutrition"
+  • "low activity food"      • "indoor cat food"
 
 🎯 Combined Queries:
   • "high protein grain-free dog food"
@@ -1284,12 +1389,22 @@ class PetFoodQuerySystem:
   
   You: "Hills kidney diet"  
   System: [Traditional: exact matches + Fuzzy: "Hill's", "renal", "nephrology"]
+  
+  You: "grain free cat food for weight management"
+  System: [Traditional: exact matches + Fuzzy: "weight control", "obesity management", "diet"]
+  
+  You: "active dog salmon no preservatives"
+  System: [Traditional: exact matches + Fuzzy: "high energy", "natural preservatives", "preservative-free"]
 
 🧠 FUZZY MATCHING BENEFITS:
   ✅ Finds misspelled terms: "Hills" → "Hill's Science Diet"
   ✅ Discovers synonyms: "kidney" → "renal", "nephrology"  
   ✅ Locates variations: "cancer" → "oncology", "tumor support"
   ✅ Catches abbreviations: Auto-expands brand names and conditions
+  ✅ Health condition matching: "diabetes" → "diabetic", "blood sugar control"
+  ✅ Activity level matching: "active" → "high energy", "working dog", "athletic"
+  ✅ Ingredient alternatives: "preservative free" → "natural", "no chemicals"
+  ✅ Therapeutic categories: "digestive" → "gastrointestinal", "GI health"
 
 ═══════════════════════════════════════════════════════════════════
         """
@@ -1457,13 +1572,18 @@ def main():
         print("\n🚀 Enhanced Features:")
         print("  • 🔍 Dual search methodology (traditional + fuzzy matching)")
         print("  • 🧠 Intelligent query element identification") 
-        print("  • 🎯 Smart text similarity matching")
+        print("  • 🎯 Smart text similarity matching across 12 FTS columns")
         print("  • 📊 Combined result analysis for comprehensive recommendations")
+        print("  • 🏥 Advanced health condition and therapeutic food matching")
+        print("  • 🏃 Activity level and lifestyle-based recommendations")
+        print("  • 🥩 Enhanced ingredient and dietary restriction support")
         print("\n💡 Example queries:")
         print("  • 'food for dogs with cancer' - finds cancer, oncology, tumor support")
         print("  • 'Hills kidney diet' - finds Hill's, renal, nephrology products")
         print("  • 'grain-free cat food for seniors' - exact + fuzzy matches")
-        print("  • 'chicken food for allergic dogs' - finds allergy support variations")
+        print("  • 'active dog salmon no preservatives' - activity + ingredients + additives")
+        print("  • 'weight management diabetic cat' - health conditions + therapeutic")
+        print("  • 'working dog high energy food' - activity levels + nutrition")
         print("\n🔧 Commands:")
         print("  • 'help' - Show detailed help")
         print("  • 'quit' - Exit")
