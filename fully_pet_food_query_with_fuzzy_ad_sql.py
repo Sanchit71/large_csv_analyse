@@ -1008,27 +1008,46 @@ class PetFoodQuerySystem:
     
     def generate_fuzzy_sql_query(self, fuzzy_results: Dict[str, List[Tuple[str, float]]]) -> str:
         """
-        Generate SQL query based on fuzzy matching results
+        Generate SQL query based on fuzzy matching results with enhanced FTS integration
         
         Args:
             fuzzy_results: Dictionary mapping column names to matched values
             
         Returns:
-            Generated SQL query string
+            Generated SQL query string with both FTS and ILIKE for comprehensive coverage
         """
         if not fuzzy_results:
             return f"SELECT * FROM {self.schema['table_name']} ORDER BY id DESC LIMIT 10"
         
         where_conditions = []
+        fts_ranking_conditions = []
         
         for column_name, matches in fuzzy_results.items():
             if column_name in self.schema['columns']:
                 # Create OR conditions for all matched values in this column
                 column_conditions = []
+                
                 for match_value, score in matches:
                     # Escape single quotes in the value
                     escaped_value = match_value.replace("'", "''")
-                    column_conditions.append(f"{column_name} ILIKE '%{escaped_value}%'")
+                    
+                    if column_name.startswith('fts_'):
+                        # For FTS columns, use @@ plainto_tsquery() operator
+                        column_conditions.append(f"{column_name} @@ plainto_tsquery('{escaped_value}')")
+                        # Add to ranking conditions for ORDER BY
+                        fts_ranking_conditions.append(f"{column_name} @@ plainto_tsquery('{escaped_value}')")
+                    else:
+                        # For regular text columns, use both FTS and ILIKE if FTS column exists
+                        fts_column_name = f"fts_{column_name}"
+                        if fts_column_name in self.schema['columns']:
+                            # Use both FTS and ILIKE for comprehensive coverage
+                            combined_condition = f"({fts_column_name} @@ plainto_tsquery('{escaped_value}') OR {column_name} ILIKE '%{escaped_value}%')"
+                            column_conditions.append(combined_condition)
+                            # Add FTS part to ranking conditions
+                            fts_ranking_conditions.append(f"{fts_column_name} @@ plainto_tsquery('{escaped_value}')")
+                        else:
+                            # No FTS column available, use only ILIKE
+                            column_conditions.append(f"{column_name} ILIKE '%{escaped_value}%'")
                 
                 if column_conditions:
                     # Combine with OR for same column, AND for different columns
@@ -1036,11 +1055,18 @@ class PetFoodQuerySystem:
         
         if where_conditions:
             where_clause = " AND ".join(where_conditions)
-            sql_query = f"SELECT * FROM {self.schema['table_name']} WHERE {where_clause} LIMIT 10"
+            
+            # Add relevance ranking if we have FTS conditions
+            if fts_ranking_conditions:
+                # Create ranking based on FTS matches
+                ranking_condition = f"(CASE WHEN {' OR '.join(fts_ranking_conditions)} THEN 1 ELSE 2 END)"
+                sql_query = f"SELECT * FROM {self.schema['table_name']} WHERE {where_clause} ORDER BY {ranking_condition}, id DESC LIMIT 10"
+            else:
+                sql_query = f"SELECT * FROM {self.schema['table_name']} WHERE {where_clause} ORDER BY id DESC LIMIT 10"
         else:
             sql_query = f"SELECT * FROM {self.schema['table_name']} ORDER BY id DESC LIMIT 10"
         
-        logger.info(f"Generated fuzzy SQL query: {sql_query}")
+        logger.info(f"Generated enhanced fuzzy SQL query with FTS: {sql_query}")
         return sql_query
     
     def combine_results(self, regular_results: Optional[pd.DataFrame], fuzzy_results: Optional[pd.DataFrame]) -> pd.DataFrame:
